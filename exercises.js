@@ -1,11 +1,4 @@
-/* Condensed exercise library (each exercise appears ONCE).
-   - name: string
-   - sections: array of tags (e.g., ["hinge","lower body","glutes"])
-   - equipment: array of equipment types
-   - muscles?: array of primary targets (optional; used when category === "specific muscle")
-   Extend freely by adding more objects to EXERCISES.
-*/
-
+/* Condensed exercise library (each exercise appears ONCE). */
 window.EXERCISES = [
   // HINGE / POSTERIOR
   {
@@ -39,7 +32,7 @@ window.EXERCISES = [
     muscles: ["Glute Max", "Hamstrings"]
   },
 
-  // SQUAT / KNEE-DOMINANT
+  // SQUAT
   {
     name: "Back Squat",
     sections: ["squat", "lower body", "quads", "glutes"],
