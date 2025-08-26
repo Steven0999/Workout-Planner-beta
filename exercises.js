@@ -1,0 +1,225 @@
+/* Condensed exercise library (each exercise appears ONCE).
+   - name: string
+   - sections: array of tags (e.g., ["hinge","lower body","glutes"])
+   - equipment: array of equipment types
+   - muscles?: array of primary targets (optional; used when category === "specific muscle")
+   Extend freely by adding more objects to EXERCISES.
+*/
+
+window.EXERCISES = [
+  // HINGE / POSTERIOR
+  {
+    name: "Romanian Deadlift",
+    sections: ["hinge", "lower body", "glutes", "hamstrings"],
+    equipment: ["barbell", "dumbbell", "kettlebell", "cable machine"],
+    muscles: ["Hamstrings", "Glute Max", "Lower Back"]
+  },
+  {
+    name: "Conventional Deadlift",
+    sections: ["hinge", "lower body", "glutes", "hamstrings", "pull"],
+    equipment: ["barbell", "dumbbell"],
+    muscles: ["Hamstrings", "Glute Max", "Lower Back", "Traps"]
+  },
+  {
+    name: "Good Morning",
+    sections: ["hinge", "lower body", "hamstrings", "glutes"],
+    equipment: ["barbell", "dumbbell"],
+    muscles: ["Hamstrings", "Glute Max", "Lower Back"]
+  },
+  {
+    name: "Hip Thrust",
+    sections: ["hinge", "lower body", "glutes"],
+    equipment: ["barbell", "dumbbell", "machine", "cable machine"],
+    muscles: ["Glute Max", "Hamstrings"]
+  },
+  {
+    name: "Glute Bridge",
+    sections: ["hinge", "lower body", "glutes"],
+    equipment: ["barbell", "dumbbell", "body weight"],
+    muscles: ["Glute Max", "Hamstrings"]
+  },
+
+  // SQUAT / KNEE-DOMINANT
+  {
+    name: "Back Squat",
+    sections: ["squat", "lower body", "quads", "glutes"],
+    equipment: ["barbell"],
+    muscles: ["Quads", "Glute Max", "Hamstrings"]
+  },
+  {
+    name: "Front Squat",
+    sections: ["squat", "lower body", "quads"],
+    equipment: ["barbell", "kettlebell"],
+    muscles: ["Quads", "Glute Max", "Core"]
+  },
+  {
+    name: "Goblet Squat",
+    sections: ["squat", "lower body", "quads"],
+    equipment: ["dumbbell", "kettlebell"],
+    muscles: ["Quads", "Glute Max"]
+  },
+  {
+    name: "Bulgarian Split Squat",
+    sections: ["squat", "lower body", "single-leg", "quads", "glutes"],
+    equipment: ["dumbbell", "barbell", "body weight"],
+    muscles: ["Quads", "Glute Max", "Hamstrings"]
+  },
+  { // Machines
+    name: "Leg Press",
+    sections: ["squat", "lower body", "quads"],
+    equipment: ["machine"],
+    muscles: ["Quads", "Glute Max"]
+  },
+  {
+    name: "Hack Squat",
+    sections: ["squat", "lower body", "quads"],
+    equipment: ["machine", "barbell"],
+    muscles: ["Quads", "Glute Max"]
+  },
+
+  // PUSH
+  {
+    name: "Bench Press",
+    sections: ["push", "upper body", "chest"],
+    equipment: ["barbell", "dumbbell", "machine"],
+    muscles: ["Chest", "Triceps", "Front Delts"]
+  },
+  {
+    name: "Incline Press",
+    sections: ["push", "upper body", "chest"],
+    equipment: ["barbell", "dumbbell", "machine", "cable machine"],
+    muscles: ["Upper Chest", "Front Delts", "Triceps"]
+  },
+  {
+    name: "Overhead Press",
+    sections: ["push", "upper body", "shoulders"],
+    equipment: ["barbell", "dumbbell", "machine"],
+    muscles: ["Front Delts", "Mid Delts", "Triceps"]
+  },
+  {
+    name: "Push-up",
+    sections: ["push", "upper body", "chest"],
+    equipment: ["body weight"],
+    muscles: ["Chest", "Triceps", "Front Delts"]
+  },
+  {
+    name: "Dips",
+    sections: ["push", "upper body", "chest", "triceps"],
+    equipment: ["body weight", "machine"],
+    muscles: ["Triceps", "Chest", "Front Delts"]
+  },
+  {
+    name: "Chest Fly",
+    sections: ["push", "upper body", "chest", "specific muscle"],
+    equipment: ["dumbbell", "cable machine", "machine"],
+    muscles: ["Chest"]
+  },
+  {
+    name: "Lateral Raise",
+    sections: ["push", "upper body", "shoulders", "specific muscle"],
+    equipment: ["dumbbell", "cable machine"],
+    muscles: ["Mid Delts"]
+  },
+  {
+    name: "Triceps Extension",
+    sections: ["push", "upper body", "triceps", "specific muscle"],
+    equipment: ["dumbbell", "cable machine", "machine", "barbell"],
+    muscles: ["Triceps"]
+  },
+
+  // PULL
+  {
+    name: "Bent-Over Row",
+    sections: ["pull", "upper body", "back"],
+    equipment: ["barbell", "dumbbell"],
+    muscles: ["Lats", "Upper Back", "Biceps"]
+  },
+  {
+    name: "Seated Row",
+    sections: ["pull", "upper body", "back"],
+    equipment: ["cable machine", "machine"],
+    muscles: ["Lats", "Upper Back", "Biceps"]
+  },
+  {
+    name: "Lat Pulldown",
+    sections: ["pull", "upper body", "back"],
+    equipment: ["cable machine", "machine"],
+    muscles: ["Lats", "Biceps", "Upper Back"]
+  },
+  {
+    name: "Pull-up",
+    sections: ["pull", "upper body", "back"],
+    equipment: ["body weight", "machine"],
+    muscles: ["Lats", "Biceps", "Upper Back"]
+  },
+  {
+    name: "Face Pull",
+    sections: ["pull", "upper body", "rear delts", "specific muscle"],
+    equipment: ["cable machine"],
+    muscles: ["Rear Delts", "Upper Back"]
+  },
+  {
+    name: "Biceps Curl",
+    sections: ["pull", "upper body", "biceps", "specific muscle"],
+    equipment: ["dumbbell", "barbell", "cable machine", "machine"],
+    muscles: ["Biceps", "Forearms"]
+  },
+  {
+    name: "Hammer Curl",
+    sections: ["pull", "upper body", "biceps", "specific muscle"],
+    equipment: ["dumbbell", "cable machine"],
+    muscles: ["Biceps", "Forearms"]
+  },
+  {
+    name: "Reverse Fly",
+    sections: ["pull", "upper body", "rear delts", "specific muscle"],
+    equipment: ["dumbbell", "cable machine", "machine"],
+    muscles: ["Rear Delts", "Upper Back"]
+  },
+
+  // LOWER-LEG / ISOLATION
+  {
+    name: "Leg Extension",
+    sections: ["lower body", "quads", "specific muscle"],
+    equipment: ["machine"],
+    muscles: ["Quads"]
+  },
+  {
+    name: "Leg Curl",
+    sections: ["lower body", "hamstrings", "specific muscle"],
+    equipment: ["machine"],
+    muscles: ["Hamstrings"]
+  },
+  {
+    name: "Calf Raise",
+    sections: ["lower body", "calves", "specific muscle"],
+    equipment: ["machine", "smith machine", "barbell", "dumbbell", "body weight"],
+    muscles: ["Calves"]
+  },
+
+  // CORE / FULL BODY
+  {
+    name: "Plank",
+    sections: ["core", "full body", "body weight"],
+    equipment: ["body weight"],
+    muscles: ["Abs", "Obliques", "Lower Back"]
+  },
+  {
+    name: "Cable Wood Chop",
+    sections: ["core", "full body"],
+    equipment: ["cable machine"],
+    muscles: ["Abs", "Obliques"]
+  },
+  {
+    name: "Burpee",
+    sections: ["full body", "conditioning"],
+    equipment: ["body weight"],
+    muscles: ["Full Body"]
+  },
+  {
+    name: "Kettlebell Swing",
+    sections: ["hinge", "full body", "glutes", "conditioning"],
+    equipment: ["kettlebell"],
+    muscles: ["Glute Max", "Hamstrings", "Lower Back"]
+  }
+];
