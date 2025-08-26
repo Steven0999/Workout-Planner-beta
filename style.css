@@ -6,123 +6,98 @@ body {
   margin: 0;
   padding: 0;
 }
-.page {
-  display: none;
-  padding: 20px;
-}
-.active {
-  display: block;
-}
-h1, h2 {
-  color: orange;
-}
+.page { display: none; padding: 20px; }
+.active { display: block; }
+h1, h2 { color: orange; }
+
 .container {
-  max-width: 800px;
+  max-width: 860px;
   margin: 20px auto;
   padding: 20px;
   background: #222;
   border-radius: 10px;
 }
-.form-group {
-  margin-bottom: 15px;
-  text-align: left;
-}
+
+.form-group { margin-bottom: 15px; text-align: left; }
 .form-group label, .form-group select, .form-group input, .form-group button {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 5px;
+  display: block; width: 100%; box-sizing: border-box; margin-top: 5px;
 }
-.form-group select, .form-group input[type="number"], .form-group input[type="datetime-local"] {
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #444;
-  background: #333;
-  color: white;
+.form-group select,
+.form-group input[type="number"],
+.form-group input[type="datetime-local"] {
+  padding: 10px; border-radius: 5px; border: 1px solid #444; background: #333; color: white;
 }
+
 button {
-  margin: 10px;
-  padding: 15px 30px;
-  font-size: 18px;
-  border: none;
-  border-radius: 8px;
-  background: grey;
-  color: orange;
-  cursor: pointer;
-  width: auto;
+  margin: 10px; padding: 15px 30px; font-size: 18px;
+  border: none; border-radius: 8px; background: grey; color: orange; cursor: pointer; width: auto;
 }
-button:hover {
-  background: #555;
-}
+button:hover { background: #555; }
+button.secondary { background: #444; color: #ddd; }
+button.secondary:hover { background: #555; }
+
 .header-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 10px 15px;
-  font-size: 14px;
-  background: orange;
-  color: black;
+  position: absolute; top: 10px; right: 10px;
+  padding: 10px 15px; font-size: 14px; background: orange; color: black;
 }
+
+.steps-indicator {
+  display: flex; justify-content: center; gap: 10px; margin-bottom: 15px;
+}
+.step-badge {
+  background: #444; color: #ccc; border-radius: 999px; width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: bold;
+}
+.step-badge.active { background: orange; color: black; }
+
+.step-nav {
+  display: flex; justify-content: space-between; align-items: center; margin-top: 10px;
+}
+
+.radio-row { display: flex; gap: 20px; }
+.hint { color: #bbb; }
+
 #current-workout-list {
-  background: #333;
-  padding: 10px;
-  border-radius: 5px;
-  margin-top: 20px;
-  text-align: left;
+  background: #333; padding: 10px; border-radius: 5px; margin-top: 20px; text-align: left;
 }
-.workout-item {
-  border-bottom: 1px solid #444;
-  padding: 8px 0;
-}
-.workout-item:last-child {
-  border-bottom: none;
-}
-#history-chart-container {
-  margin-top: 20px;
-}
+.workout-item { border-bottom: 1px solid #444; padding: 8px 0; }
+.workout-item:last-child { border-bottom: none; }
+
+#history-chart-container { margin-top: 20px; }
 .chart-container {
-  position: relative;
-  height: 400px;
-  width: 100%;
-  background: #111;
-  border-radius: 5px;
-  padding: 10px;
+  position: relative; height: 400px; width: 100%;
+  background: #111; border-radius: 5px; padding: 10px;
 }
-/* Responsive grid layout for weight inputs */
-#weight-inputs-container {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 10px;
-}
-/* Styling for the weight input fields */
-.set-weight-input {
-  background: #555; /* Gray background */
-  color: white;    /* White text */
-  border: 1px solid #444;
-  border-radius: 5px;
-  padding: 10px;
-  width: 100%;
-  box-sizing: border-box;
-}
+
 #history-log li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #333;
-  margin: 10px 0;
-  padding: 10px;
-  border-radius: 5px;
+  display: flex; justify-content: space-between; align-items: center;
+  background: #333; margin: 10px 0; padding: 10px; border-radius: 5px;
 }
-.history-actions button {
-  padding: 5px 10px;
-  font-size: 14px;
-  margin-left: 5px;
-}
+.history-actions button { padding: 5px 10px; font-size: 14px; margin-left: 5px; }
 .history-actions .edit-btn { background: #5a5; color: white; }
 .history-actions .delete-btn { background: #a55; color: white; }
-.edit-mode-indicator {
-  color: yellow;
-  font-style: italic;
-  margin-bottom: 10px;
+
+.edit-mode-indicator { color: yellow; font-style: italic; margin-bottom: 10px; }
+
+/* Step 5 sets grid: each row has reps+weight */
+#sets-grid { display: grid; gap: 10px; margin-top: 10px; }
+.set-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
+.set-row input {
+  background: #555; color: white; border: 1px solid #444;
+  border-radius: 5px; padding: 10px; width: 100%; box-sizing: border-box;
+}
+
+/* Session Summary */
+.summary-card {
+  background: #111; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: left;
+  margin-bottom: 12px;
+}
+.summary-row { display: grid; grid-template-columns: 160px auto; gap: 10px; margin: 6px 0; }
+.summary-exercise {
+  background: #333; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: left;
+}
+.summary-exercise small { color: #bbb; }
+.summary-totals { margin-top: 10px; text-align: left; background:#111; border:1px solid #333; border-radius:8px; padding:10px; }
+.summary-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
