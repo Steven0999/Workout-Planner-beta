@@ -1,4 +1,6 @@
-// ===== Helpers & Config =====
+/* ===========================
+   Helpers & Config
+=========================== */
 const HOME_EQUIPMENT = ["body weight", "resistance bands", "kettlebell"];
 const CATEGORY_WHITELIST = new Set([
   "upper body", "lower body", "push", "pull", "hinge", "squat", "full body", "core", "specific muscle"
@@ -7,14 +9,12 @@ const CATEGORY_WHITELIST = new Set([
 const uniq = arr => [...new Set(arr)];
 const title = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 
-// Derive categories and muscles from EXERCISES
 function allCategories() {
   return uniq(EXERCISES.flatMap(e => e.sections.filter(s => CATEGORY_WHITELIST.has(s)))).sort();
 }
 function allMuscles() {
   return uniq(EXERCISES.flatMap(e => Array.isArray(e.muscles) ? e.muscles : [])).sort();
 }
-
 function byLocation(items, location) {
   if (location === "home") return items.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.includes(eq)));
   return items;
@@ -28,7 +28,9 @@ function byCategoryAndMuscle(items, category, muscle) {
   return items.filter(e => e.sections.includes(category));
 }
 
-// ===== Wizard State =====
+/* ===========================
+   Wizard State
+=========================== */
 let currentStep = 1;
 let myChart;
 let userWorkoutData = JSON.parse(localStorage.getItem("userWorkoutData")) || {};
@@ -39,7 +41,7 @@ let editingRecord = null;
 const wizard = {
   location: "",           // gym/home
   timing: "",             // now/past
-  datetime: "",           // ISO string
+  datetime: "",           // ISO yyyy-MM-ddTHH:mm
   category: "",
   muscle: "",
   equipment: "",
@@ -51,8 +53,34 @@ const wizard = {
   maxWeightSetCount: 0
 };
 
-// ===== Init =====
+/* ===========================
+   DOM Ready: bind everything
+=========================== */
 document.addEventListener("DOMContentLoaded", () => {
+  // Header buttons
+  const toHistory = document.getElementById("to-history");
+  const toLogger  = document.getElementById("to-logger");
+  if (toHistory) toHistory.addEventListener("click", showHistoryView);
+  if (toLogger)  toLogger.addEventListener("click", showLoggerView);
+
+  // Wizard nav
+  const nextBtn = document.getElementById("next-btn");
+  const prevBtn = document.getElementById("prev-btn");
+  if (nextBtn) nextBtn.addEventListener("click", () => {
+    try { nextStep(); } catch (e) { console.error("nextStep error:", e); alert("Couldn't go next. Check console."); }
+  });
+  if (prevBtn) prevBtn.addEventListener("click", () => {
+    try { prevStep(); } catch (e) { console.error("prevStep error:", e); alert("Couldn't go back. Check console."); }
+  });
+
+  // Step 6 actions
+  document.getElementById("edit-exercises-btn")?.addEventListener("click", () => goToStep(5));
+  document.getElementById("save-session-btn")?.addEventListener("click", saveSession);
+
+  // Step 5 add exercise
+  document.getElementById("add-exercise-btn")?.addEventListener("click", addExerciseToWorkout);
+
+  // Init steps
   initStep1();
   initStep2();
   initStep3();
@@ -63,48 +91,51 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById('history-details').style.display = "none";
 });
 
-// ===== Step navigation =====
+/* ===========================
+   Step navigation
+=========================== */
 function goToStep(step) {
   currentStep = step;
+
+  // Show only current step
   document.querySelectorAll(".wizard-step").forEach((el, idx) => {
     el.style.display = (idx === step - 1) ? "block" : "none";
   });
+
+  // Step badges
   document.querySelectorAll(".step-badge").forEach(b => {
     b.classList.toggle("active", Number(b.dataset.step) === step);
   });
 
+  // Nav button states
   const prev = document.getElementById("prev-btn");
   const next = document.getElementById("next-btn");
-  prev.disabled = (step === 1);
-  next.textContent = (step === 6) ? "Save" : (step === 5 ? "Review" : "Next");
+  if (prev) prev.disabled = (step === 1);
+  if (next) next.textContent = (step === 6) ? "Save" : (step === 5 ? "Review" : "Next");
 
-  // Build summary automatically when entering step 6
+  // Build summary upon entering step 6
   if (step === 6) buildSessionSummary();
 }
-
 function prevStep() {
   if (currentStep > 1) goToStep(currentStep - 1);
 }
-
 function nextStep() {
-  // Validate & store
   if (!validateAndStore(currentStep)) return;
-
   if (currentStep < 5) {
     goToStep(currentStep + 1);
   } else if (currentStep === 5) {
-    // From Sets to Summary
-    goToStep(6);
+    goToStep(6); // Summary
   } else {
-    // Step 6 "Save"
-    saveSession();
+    saveSession(); // Step 6 Save
   }
 }
 
-// ===== Step 1: Location =====
+/* ===========================
+   Step 1: Location
+=========================== */
 function initStep1() {
   const sel = document.getElementById("workout-type-select");
-  sel.value = wizard.location || "";
+  if (sel) sel.value = wizard.location || "";
 }
 function validateAndStoreStep1() {
   const val = document.getElementById("workout-type-select").value;
@@ -113,17 +144,21 @@ function validateAndStoreStep1() {
   return true;
 }
 
-// ===== Step 2: Timing =====
+/* ===========================
+   Step 2: Timing
+=========================== */
 function initStep2() {
   const timingRadios = document.querySelectorAll('input[name="timing"]');
   timingRadios.forEach(r => r.addEventListener("change", onTimingChange));
 
   if (!wizard.timing) {
-    document.querySelector('input[name="timing"][value="now"]').checked = true;
+    const nowRadio = document.querySelector('input[name="timing"][value="now"]');
+    if (nowRadio) nowRadio.checked = true;
     wizard.timing = "now";
     setDateToNow(true);
   } else {
-    document.querySelector(`input[name="timing"][value="${wizard.timing}"]`).checked = true;
+    const chosen = document.querySelector(`input[name="timing"][value="${wizard.timing}"]`);
+    if (chosen) chosen.checked = true;
     if (wizard.timing === "now") setDateToNow(true);
   }
 }
@@ -152,7 +187,9 @@ function validateAndStoreStep2() {
   return true;
 }
 
-// ===== Step 3: Category =====
+/* ===========================
+   Step 3: Category
+=========================== */
 function initStep3() {
   const workOnSelect = document.getElementById("work-on-select");
   const cats = allCategories();
@@ -194,10 +231,10 @@ function validateAndStoreStep3() {
   return true;
 }
 
-// ===== Step 4: Equipment =====
-function initStep4() {
-  populateEquipment();
-}
+/* ===========================
+   Step 4: Equipment
+=========================== */
+function initStep4() { populateEquipment(); }
 function populateEquipment() {
   const equipmentSelect = document.getElementById("equipment-select");
   equipmentSelect.innerHTML = `<option value="">--Select--</option>`;
@@ -218,16 +255,18 @@ function validateAndStoreStep4() {
   return true;
 }
 
-// ===== Step 5: Exercise + Sets =====
+/* ===========================
+   Step 5: Exercise + Sets
+=========================== */
 function initStep5() {
   populateExercises();
 
   const setsInput = document.getElementById("sets-input");
   setsInput.value = wizard.sets;
-  setsInput.onchange = () => {
+  setsInput.addEventListener("change", () => {
     wizard.sets = Math.max(1, parseInt(setsInput.value || "1", 10));
     renderSetRows(wizard.sets);
-  };
+  });
   renderSetRows(wizard.sets);
 }
 function populateExercises() {
@@ -285,7 +324,7 @@ function validateAndStoreStep5() {
   return true;
 }
 
-// ===== Validate per step wrapper =====
+/* Validate wrapper */
 function validateAndStore(step) {
   switch (step) {
     case 1: return validateAndStoreStep1();
@@ -298,9 +337,10 @@ function validateAndStore(step) {
   }
 }
 
-// ===== Current workout list =====
+/* ===========================
+   Add to current session
+=========================== */
 function addExerciseToWorkout() {
-  // Ensure Step 5 values are valid and stored
   if (!validateAndStoreStep5()) return;
 
   const newExercise = {
@@ -320,14 +360,13 @@ function addExerciseToWorkout() {
   currentWorkoutExercises.push(newExercise);
   renderCurrentWorkoutList();
 
-  // Reset only Step 5 local inputs
+  // Reset step-5 inputs for quickly adding another exercise
   document.getElementById("exercise-select").value = "";
   document.getElementById("sets-input").value = "3";
   wizard.exercise = "";
   wizard.sets = 3;
   renderSetRows(3);
 }
-
 function renderCurrentWorkoutList() {
   const listContainer = document.getElementById("current-workout-list-container");
   const list = document.getElementById("current-workout-list");
@@ -353,13 +392,14 @@ function renderCurrentWorkoutList() {
     listContainer.style.display = "none";
   }
 }
-
 function removeExerciseFromWorkout(index) {
   currentWorkoutExercises.splice(index, 1);
   renderCurrentWorkoutList();
 }
 
-// ===== Step 6: Build Session Summary =====
+/* ===========================
+   Step 6: Session Summary
+=========================== */
 function buildSessionSummary() {
   const meta = document.getElementById("summary-meta");
   const exWrap = document.getElementById("summary-exercises");
@@ -391,7 +431,7 @@ function buildSessionSummary() {
     });
   }
 
-  // Totals (simple volume calc)
+  // Totals
   let totalVolume = 0;
   let totalSets = 0;
   let totalExercises = currentWorkoutExercises.length;
@@ -408,7 +448,9 @@ function buildSessionSummary() {
   `;
 }
 
-// ===== Save session (unchanged logic; charts pick it up from storage) =====
+/* ===========================
+   Save Session
+=========================== */
 function saveSession() {
   const dt = wizard.datetime;
   if (!dt) { alert("Missing session date/time — go back to Step 2."); return; }
@@ -436,7 +478,7 @@ function saveSession() {
   localStorage.setItem("userWorkoutData", JSON.stringify(userWorkoutData));
   alert("Workout session saved successfully!");
 
-  // Reset for fresh session
+  // Reset for next session
   currentWorkoutExercises = [];
   renderCurrentWorkoutList();
 
@@ -448,7 +490,8 @@ function saveSession() {
 
   // UI reset to step 1
   document.getElementById("workout-type-select").value = "";
-  document.querySelector('input[name="timing"][value="now"]').checked = true;
+  const nowRadio = document.querySelector('input[name="timing"][value="now"]');
+  if (nowRadio) nowRadio.checked = true;
   setDateToNow(true);
   document.getElementById("work-on-select").value = "";
   document.getElementById("muscle-select").value = "";
@@ -460,7 +503,9 @@ function saveSession() {
   goToStep(1);
 }
 
-// ===== Switch to History =====
+/* ===========================
+   History & Charts
+=========================== */
 function showHistoryView() {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById("workout-history").classList.add("active");
@@ -472,7 +517,6 @@ function showLoggerView() {
   goToStep(1);
 }
 
-// ===== History & Charts =====
 function populateHistoryDropdown() {
   const historySelect = document.getElementById("history-select");
   const recordedExercises = Object.keys(userWorkoutData);
@@ -480,7 +524,6 @@ function populateHistoryDropdown() {
     recordedExercises.map(ex => `<option value="${ex}">${ex}</option>`).join('');
   document.getElementById("history-details").style.display = "none";
 }
-
 function displayExerciseHistory() {
   const selectedExercise = document.getElementById("history-select").value;
   const historyDetails = document.getElementById("history-details");
@@ -548,7 +591,6 @@ function displayExerciseHistory() {
     historyLog.appendChild(listItem);
   });
 }
-
 function deleteRecord(exerciseName, recordId) {
   if (confirm("Are you sure you want to delete this record?")) {
     const history = userWorkoutData[exerciseName];
@@ -566,8 +608,6 @@ function deleteRecord(exerciseName, recordId) {
     displayExerciseHistory();
   }
 }
-
-// Quick edit flow (preload into wizard)
 function editRecord(exerciseName, recordId) {
   const history = userWorkoutData[exerciseName];
   const record = history.records.find(r => r.id === recordId);
@@ -586,12 +626,16 @@ function editRecord(exerciseName, recordId) {
 
   showLoggerView();
 
+  // Step 1
   document.getElementById("workout-type-select").value = wizard.location;
-  document.querySelector('input[name="timing"][value="past"]').checked = true;
+  // Step 2
+  const pastRadio = document.querySelector('input[name="timing"][value="past"]');
+  if (pastRadio) pastRadio.checked = true;
   const dt = document.getElementById("workout-datetime");
   dt.removeAttribute("disabled");
   dt.value = wizard.datetime;
 
+  // Step 3
   const catSel = document.getElementById("work-on-select");
   catSel.value = wizard.category;
   const muscleGroup = document.getElementById("muscle-select-group");
@@ -602,9 +646,11 @@ function editRecord(exerciseName, recordId) {
     muscleGroup.style.display = "none";
   }
 
+  // Step 4
   populateEquipment();
   document.getElementById("equipment-select").value = wizard.equipment;
 
+  // Step 5
   populateExercises();
   document.getElementById("exercise-select").value = wizard.exercise;
   document.getElementById("sets-input").value = wizard.sets;
@@ -616,4 +662,8 @@ function editRecord(exerciseName, recordId) {
   document.getElementById("edit-mode-message").style.display = "block";
 
   goToStep(5);
-      }
+}
+
+/* Expose a couple for safety if needed in console */
+window.showHistoryView = showHistoryView;
+window.showLoggerView = showLoggerView;
