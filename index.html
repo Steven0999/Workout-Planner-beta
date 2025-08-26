@@ -9,71 +9,124 @@
 </head>
 <body>
 
-  <!-- Workout Logger Page -->
+  <!-- ===== WIZARD: Workout Logger ===== -->
   <div id="workout-logger" class="page active">
     <button class="header-btn" onclick="showHistoryView()">View My History</button>
     <div class="container">
       <h1>Log New Workout Session</h1>
       <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">Editing an existing record.</div>
 
-      <div class="form-group">
-        <label for="workout-type-select">Workout Location</label>
-        <select id="workout-type-select" onchange="filterEquipmentByWorkoutType()"></select>
+      <!-- Step indicators (now 6 steps) -->
+      <div class="steps-indicator">
+        <span data-step="1" class="step-badge active">1</span>
+        <span data-step="2" class="step-badge">2</span>
+        <span data-step="3" class="step-badge">3</span>
+        <span data-step="4" class="step-badge">4</span>
+        <span data-step="5" class="step-badge">5</span>
+        <span data-step="6" class="step-badge">6</span>
       </div>
 
-      <div class="form-group">
-        <label for="workout-datetime">Workout Date & Time</label>
-        <input type="datetime-local" id="workout-datetime">
+      <!-- Step 1: Location -->
+      <div class="wizard-step" id="step-1">
+        <h2>Where are you training?</h2>
+        <div class="form-group">
+          <label for="workout-type-select">Workout Location</label>
+          <select id="workout-type-select">
+            <option value="">--Select Location--</option>
+            <option value="gym">Gym</option>
+            <option value="home">Home</option>
+          </select>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="work-on-select">What do you want to work on?</label>
-        <select id="work-on-select" onchange="filterEquipment()"></select>
+      <!-- Step 2: Time -->
+      <div class="wizard-step" id="step-2" style="display:none;">
+        <h2>When are you training?</h2>
+        <div class="form-group">
+          <label>Session Timing</label>
+          <div class="radio-row">
+            <label><input type="radio" name="timing" value="now"> Training now</label>
+            <label><input type="radio" name="timing" value="past"> Recording a past session</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="workout-datetime">Workout Date &amp; Time</label>
+          <input type="datetime-local" id="workout-datetime">
+          <small id="date-hint" class="hint"></small>
+        </div>
       </div>
 
-      <div class="form-group" id="muscle-select-group" style="display:none;">
-        <label for="muscle-select">Specific Muscle</label>
-        <select id="muscle-select" onchange="filterEquipment()"></select>
+      <!-- Step 3: Category -->
+      <div class="wizard-step" id="step-3" style="display:none;">
+        <h2>What are you training?</h2>
+        <div class="form-group">
+          <label for="work-on-select">Training Focus</label>
+          <select id="work-on-select"></select>
+        </div>
+
+        <div class="form-group" id="muscle-select-group" style="display:none;">
+          <label for="muscle-select">Specific Muscle</label>
+          <select id="muscle-select"></select>
+        </div>
       </div>
 
-      <div class="form-group" id="equipment-select-group">
-        <label for="equipment-select">Equipment</label>
-        <select id="equipment-select" onchange="filterExercises()"></select>
+      <!-- Step 4: Equipment -->
+      <div class="wizard-step" id="step-4" style="display:none;">
+        <h2>Pick the machine/equipment</h2>
+        <div class="form-group">
+          <label for="equipment-select">Equipment</label>
+          <select id="equipment-select"></select>
+        </div>
       </div>
 
-      <div class="form-group" id="exercise-select-group">
-        <label for="exercise-select">Exercise</label>
-        <select id="exercise-select"></select>
-      </div>
-
-      <div id="exercise-inputs">
-        <p id="suggested-weight-text" style="color: lightgray;"></p>
+      <!-- Step 5: Exercise + Sets -->
+      <div class="wizard-step" id="step-5" style="display:none;">
+        <h2>Choose exercise & sets</h2>
 
         <div class="form-group">
-          <label for="sets-input">Sets</label>
-          <input type="number" id="sets-input" value="3" min="1" onchange="renderSetWeightInputs()">
+          <label for="exercise-select">Exercise</label>
+          <select id="exercise-select"></select>
         </div>
 
         <div class="form-group">
-          <label for="reps-input">Reps</label>
-          <input type="number" id="reps-input" value="10" min="1">
+          <label for="sets-input">How many sets?</label>
+          <input type="number" id="sets-input" value="3" min="1">
         </div>
 
-        <label>Weight for each set (kg)</label>
-        <div id="weight-inputs-container"></div>
+        <div id="sets-grid"></div>
 
-        <button id="add-exercise-btn" onclick="addExerciseToWorkout()">Add Exercise to Session</button>
+        <div class="form-group">
+          <button id="add-exercise-btn" onclick="addExerciseToWorkout()">Add Exercise to Session</button>
+        </div>
+
+        <div id="current-workout-list-container" style="display:none;">
+          <h3 style="color:orange;">Current Workout Session</h3>
+          <div id="current-workout-list"></div>
+        </div>
       </div>
 
-      <div id="current-workout-list-container" style="display:none;">
-        <h3 style="color:orange;">Current Workout Session</h3>
-        <div id="current-workout-list"></div>
-        <button id="save-session-btn" onclick="saveSession()">Save Entire Session</button>
+      <!-- Step 6: Session Summary -->
+      <div class="wizard-step" id="step-6" style="display:none;">
+        <h2>Session Summary</h2>
+        <div id="summary-meta" class="summary-card"></div>
+        <h3 style="color:orange;">Exercises</h3>
+        <div id="summary-exercises"></div>
+        <div class="summary-totals" id="summary-totals"></div>
+        <div class="summary-actions">
+          <button class="secondary" onclick="goToStep(5)">Edit Exercises</button>
+          <button id="save-session-btn" onclick="saveSession()">Save Entire Session</button>
+        </div>
+      </div>
+
+      <!-- Wizard Navigation -->
+      <div class="step-nav">
+        <button id="prev-btn" class="secondary" onclick="prevStep()" disabled>Previous</button>
+        <button id="next-btn" onclick="nextStep()">Next</button>
       </div>
     </div>
   </div>
 
-  <!-- Workout History Page -->
+  <!-- ===== HISTORY ===== -->
   <div id="workout-history" class="page">
     <button class="header-btn" onclick="showLoggerView()">Back to Logger</button>
     <div class="container">
@@ -95,9 +148,9 @@
     </div>
   </div>
 
-  <!-- Load condensed library first -->
+  <!-- Load condensed exercise lib first -->
   <script src="exercises.js"></script>
   <!-- Then the app logic -->
   <script src="script.js"></script>
 </body>
-</html>
+            </html>
