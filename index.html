@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workout Session Logger</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Your existing styles (keep your style.css file from earlier) -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -38,6 +36,7 @@
             <option value="gym">Gym</option>
             <option value="home">Home</option>
           </select>
+          <small class="hint" id="s1-hint"></small>
         </div>
       </div>
 
@@ -56,6 +55,7 @@
           <input type="datetime-local" id="workout-datetime">
           <small id="date-hint" class="hint"></small>
         </div>
+        <small class="hint" id="s2-hint"></small>
       </div>
 
       <!-- Step 3: Category -->
@@ -64,6 +64,7 @@
         <div class="form-group">
           <label for="work-on-select">Training Focus</label>
           <select id="work-on-select"></select>
+          <small class="hint" id="s3-hint"></small>
         </div>
 
         <div class="form-group" id="muscle-select-group" style="display:none;">
@@ -78,6 +79,7 @@
         <div class="form-group">
           <label for="equipment-select">Equipment</label>
           <select id="equipment-select"></select>
+          <small class="hint" id="s4-hint"></small>
         </div>
       </div>
 
@@ -106,6 +108,7 @@
           <h3 style="color:orange;">Current Workout Session</h3>
           <div id="current-workout-list"></div>
         </div>
+        <small class="hint" id="s5-hint"></small>
       </div>
 
       <!-- Step 6: Session Summary -->
@@ -121,10 +124,10 @@
         </div>
       </div>
 
-      <!-- Wizard Navigation -->
+      <!-- Wizard Navigation (inline fallback + JS binding) -->
       <div class="step-nav">
-        <button id="prev-btn" class="secondary" disabled>Previous</button>
-        <button id="next-btn">Next</button>
+        <button id="prev-btn" class="secondary" onclick="window.prevStep && window.prevStep()" disabled>Previous</button>
+        <button id="next-btn" onclick="window.nextStep && window.nextStep()">Next</button>
       </div>
     </div>
   </div>
