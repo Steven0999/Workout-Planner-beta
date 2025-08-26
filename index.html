@@ -9,50 +9,59 @@
 </head>
 <body>
 
+  <!-- Workout Logger Page -->
   <div id="workout-logger" class="page active">
     <button class="header-btn" onclick="showHistoryView()">View My History</button>
     <div class="container">
       <h1>Log New Workout Session</h1>
       <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">Editing an existing record.</div>
+
       <div class="form-group">
         <label for="workout-type-select">Workout Location</label>
         <select id="workout-type-select" onchange="filterEquipmentByWorkoutType()"></select>
       </div>
+
       <div class="form-group">
         <label for="workout-datetime">Workout Date & Time</label>
         <input type="datetime-local" id="workout-datetime">
       </div>
+
       <div class="form-group">
         <label for="work-on-select">What do you want to work on?</label>
         <select id="work-on-select" onchange="filterEquipment()"></select>
       </div>
+
       <div class="form-group" id="muscle-select-group" style="display:none;">
         <label for="muscle-select">Specific Muscle</label>
         <select id="muscle-select" onchange="filterEquipment()"></select>
       </div>
+
       <div class="form-group" id="equipment-select-group">
         <label for="equipment-select">Equipment</label>
         <select id="equipment-select" onchange="filterExercises()"></select>
       </div>
+
       <div class="form-group" id="exercise-select-group">
         <label for="exercise-select">Exercise</label>
         <select id="exercise-select"></select>
       </div>
-      
+
       <div id="exercise-inputs">
         <p id="suggested-weight-text" style="color: lightgray;"></p>
+
         <div class="form-group">
           <label for="sets-input">Sets</label>
           <input type="number" id="sets-input" value="3" min="1" onchange="renderSetWeightInputs()">
         </div>
+
         <div class="form-group">
           <label for="reps-input">Reps</label>
           <input type="number" id="reps-input" value="10" min="1">
         </div>
-        
+
         <label>Weight for each set (kg)</label>
         <div id="weight-inputs-container"></div>
-        
+
         <button id="add-exercise-btn" onclick="addExerciseToWorkout()">Add Exercise to Session</button>
       </div>
 
@@ -64,6 +73,7 @@
     </div>
   </div>
 
+  <!-- Workout History Page -->
   <div id="workout-history" class="page">
     <button class="header-btn" onclick="showLoggerView()">Back to Logger</button>
     <div class="container">
@@ -72,18 +82,22 @@
         <label for="history-select">Select an Exercise</label>
         <select id="history-select" onchange="displayExerciseHistory()"></select>
       </div>
+
       <div id="history-details" style="display:none;">
         <h3 id="best-weight-title">Best Weight: </h3>
         <div id="history-chart-container" class="chart-container">
           <canvas id="history-chart"></canvas>
         </div>
+
         <h3 style="color:orange;">All Records</h3>
         <ul id="history-log"></ul>
       </div>
     </div>
   </div>
 
+  <!-- Load condensed library first -->
+  <script src="exercises.js"></script>
+  <!-- Then the app logic -->
   <script src="script.js"></script>
-
 </body>
 </html>
