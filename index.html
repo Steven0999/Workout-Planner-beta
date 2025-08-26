@@ -5,18 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workout Session Logger</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Your existing styles (keep your style.css file from earlier) -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- ===== WIZARD: Workout Logger ===== -->
   <div id="workout-logger" class="page active">
-    <button class="header-btn" onclick="showHistoryView()">View My History</button>
+    <button class="header-btn" id="to-history">View My History</button>
     <div class="container">
       <h1>Log New Workout Session</h1>
       <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">Editing an existing record.</div>
 
-      <!-- Step indicators (now 6 steps) -->
+      <!-- Step indicators -->
       <div class="steps-indicator">
         <span data-step="1" class="step-badge active">1</span>
         <span data-step="2" class="step-badge">2</span>
@@ -93,10 +95,11 @@
           <input type="number" id="sets-input" value="3" min="1">
         </div>
 
+        <!-- One row per set: reps + weight -->
         <div id="sets-grid"></div>
 
         <div class="form-group">
-          <button id="add-exercise-btn" onclick="addExerciseToWorkout()">Add Exercise to Session</button>
+          <button id="add-exercise-btn">Add Exercise to Session</button>
         </div>
 
         <div id="current-workout-list-container" style="display:none;">
@@ -113,27 +116,27 @@
         <div id="summary-exercises"></div>
         <div class="summary-totals" id="summary-totals"></div>
         <div class="summary-actions">
-          <button class="secondary" onclick="goToStep(5)">Edit Exercises</button>
-          <button id="save-session-btn" onclick="saveSession()">Save Entire Session</button>
+          <button class="secondary" id="edit-exercises-btn">Edit Exercises</button>
+          <button id="save-session-btn">Save Entire Session</button>
         </div>
       </div>
 
       <!-- Wizard Navigation -->
       <div class="step-nav">
-        <button id="prev-btn" class="secondary" onclick="prevStep()" disabled>Previous</button>
-        <button id="next-btn" onclick="nextStep()">Next</button>
+        <button id="prev-btn" class="secondary" disabled>Previous</button>
+        <button id="next-btn">Next</button>
       </div>
     </div>
   </div>
 
   <!-- ===== HISTORY ===== -->
   <div id="workout-history" class="page">
-    <button class="header-btn" onclick="showLoggerView()">Back to Logger</button>
+    <button class="header-btn" id="to-logger">Back to Logger</button>
     <div class="container">
       <h2>Workout History</h2>
       <div class="form-group">
         <label for="history-select">Select an Exercise</label>
-        <select id="history-select" onchange="displayExerciseHistory()"></select>
+        <select id="history-select"></select>
       </div>
 
       <div id="history-details" style="display:none;">
@@ -148,9 +151,9 @@
     </div>
   </div>
 
-  <!-- Load condensed exercise lib first -->
+  <!-- Load condensed exercise library FIRST -->
   <script src="exercises.js"></script>
   <!-- Then the app logic -->
   <script src="script.js"></script>
 </body>
-            </html>
+</html>
