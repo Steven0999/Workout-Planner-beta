@@ -23,6 +23,18 @@ const toFloat = (v, f = 0) => { const n = parseFloat(v); return Number.isFinite(
 const isoToLocalString = (iso) => { try { return new Date(iso).toLocaleString(); } catch { return iso || "—"; } };
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
 const fmtDelta = (d) => (d == null ? "—" : d > 0 ? `▲ +${d.toFixed(2)}kg` : d < 0 ? `▼ ${Math.abs(d).toFixed(2)}kg` : `= 0kg`);
+const FIXED_CATEGORIES = [
+  "upper body",
+  "lower body",
+  "push",
+  "pull",
+  "full body",
+  "hinge",
+  "squat",
+  "core",
+  "specific muscle"
+];
+
 
 /* ---- Normalization PATCH (robustly read your library) ---- */
 function toLowerArray(val) {
@@ -76,6 +88,12 @@ function byCategoryAndMuscle(items, category, muscle) {
     return items.filter((e) => e.sections.includes("specific muscle") && e.muscles.includes(m));
   }
   return items.filter((e) => e.sections.includes(cat));
+}
+function normalizeCategory(c0) {
+  const c = String(c0 || "").toLowerCase().trim();
+  if (c === "upper") return "upper body";
+  if (c === "lower" || c === "legs") return "lower body";
+  return c;
 }
 
 /* ---- App state ---- */
@@ -387,55 +405,79 @@ function validateAndStoreStep2() {
 /* ======================================================================
    Step 3 — Category (+ specific muscle)
 ====================================================================== */
+// Step 3 — Category (+ specific muscle)
 function initStep3() {
   const workOn = document.getElementById("work-on-select");
   const musclesSel = document.getElementById("muscle-select");
   const muscleGroup = document.getElementById("muscle-select-group");
 
-  if (!workOn || !musclesSel) return;
+  // Build categories from FIXED_CATEGORIES only (no auto-scan from data)
+  workOn.innerHTML =
+    `<option value="">--Select--</option>` +
+    FIXED_CATEGORIES.map((c) => `<option value="${c}">${capitalize(c)}</option>`).join("");
 
-  // Build categories from your data
-  const cats = allCategories();
-  workOn.innerHTML = `<option value="">--Select--</option>${cats.map(c=>`<option value="${c}">${title(c)}</option>`).join("")}`;
-  workOn.value = wizard.category || "";
+  // Build muscle list (either a static list you already had, or derive from data if you like)
+  const muscles =
+    Array.from(
+      new Set(
+        (Array.isArray(EXERCISES_NORM) ? EXERCISES_NORM : [])
+          .flatMap((e) => Array.isArray(e.muscles) ? e.muscles : [])
+          .map((m) => String(m).trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
 
-  // Build muscles from your data
-  const muscles = allMuscles();
-  musclesSel.innerHTML = `<option value="">--Select--</option>${muscles.map(m=>`<option value="${m}">${m}</option>`).join("")}`;
-  musclesSel.value = wizard.muscle || "";
+  musclesSel.innerHTML =
+    `<option value="">--Select--</option>` +
+    muscles.map((m) => `<option value="${m}">${m}</option>`).join("");
 
-  // Show/hide muscle group when "specific muscle" is selected
-  const setMuscleVisibility = () => {
-    if (String(workOn.value).toLowerCase() === "specific muscle") {
+  // Restore existing wizard state if any
+  if (wizard.category) workOn.value = wizard.category;
+  if (wizard.muscle) musclesSel.value = wizard.muscle;
+  muscleGroup.style.display = (wizard.category === "specific muscle") ? "block" : "none";
+
+  // Handlers
+  workOn.addEventListener("change", () => {
+    const cat = normalizeCategory(workOn.value);
+    wizard.category = cat;
+    wizard.equipment = "";
+    wizard.exercise = "";
+
+    // Show/hide muscle picker only for "specific muscle"
+    if (cat === "specific muscle") {
       muscleGroup.style.display = "block";
     } else {
       muscleGroup.style.display = "none";
-      musclesSel.value = "";
       wizard.muscle = "";
+      musclesSel.value = "";
     }
-  };
-  setMuscleVisibility();
 
-  workOn.addEventListener("change", () => {
-    wizard.category = workOn.value;
-    wizard.equipment = ""; wizard.exercise = "";
-    setMuscleVisibility();
+    // Clearing downstream when category changes
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
   });
+
   musclesSel.addEventListener("change", () => {
     wizard.muscle = musclesSel.value;
+    // Clear downstream when muscle changes
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
   });
 }
+
 function validateAndStoreStep3() {
   const hint = document.getElementById("s3-hint");
-  const cat = document.getElementById("work-on-select").value;
-  if (!cat) { if (hint) hint.textContent = "Please select what you're training."; return false; }
+  const raw = document.getElementById("work-on-select").value;
+  if (!raw) { if (hint) hint.textContent = "Please select what you're training."; return false; }
+  const cat = normalizeCategory(raw);
   wizard.category = cat;
 
-  if (String(cat).toLowerCase() === "specific muscle") {
+  if (cat === "specific muscle") {
     const mus = document.getElementById("muscle-select").value;
     if (!mus) { if (hint) hint.textContent = "Please choose a specific muscle."; return false; }
     wizard.muscle = mus;
   }
+
   if (hint) hint.textContent = "";
   return true;
 }
