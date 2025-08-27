@@ -76,7 +76,8 @@
         <!-- Step 5: Exercise + Sets -->
         <div class="wizard-step" data-step="5" style="display:none;">
           <h2>Select Exercise & Log Sets</h2>
-          <div class="form-group">
+          
+          <div id="exercise-select-group" class="form-group">
             <label for="exercise-select">Exercise</label>
             <select id="exercise-select"></select>
           </div>
@@ -84,16 +85,20 @@
             <label for="sets-input">Number of Sets</label>
             <input type="number" id="sets-input" value="3" min="1">
           </div>
-          <div id="sets-grid"></div>
-          <div id="s5-hint" class="hint"></div>
+            <!-- The rows (reps & weights) will be injected here -->
+  <div id="exercise-inputs"></div>
 
-          <button id="add-exercise-btn">Add Exercise to Session</button>
+  <div id="s5-hint" class="hint"></div>
 
-          <div id="current-workout-list-container" style="display:none;">
-            <h3 style="color:orange;">Current Workout Session</h3>
-            <div id="current-workout-list"></div>
-          </div>
-        </div>
+  <div style="margin-top:8px;">
+    <button id="add-exercise-btn" class="btn">Add Exercise to Session</button>
+  </div>
+
+  <div id="current-workout-list-container" style="display:none; margin-top:12px;">
+    <h3>Current Session</h3>
+    <div id="current-workout-list"></div>
+  </div>
+</div>
 
         <!-- Step 6: Review & Save -->
         <div class="wizard-step" data-step="6" style="display:none;">
