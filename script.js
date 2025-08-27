@@ -2,28 +2,6 @@
 // Workout Logger - script.js (FULL)
 // Requires: Chart.js + exercises.js (loaded BEFORE this file)
 // ========================================================
-//
-// Wizard flow:
-//  1) Location (Gym/Home)
-//  2) Timing (Now/Past) + datetime
-//  3) What you're training (category + muscle if "specific muscle")
-//  4) Equipment (auto-filtered by category + muscle + location)
-//  5) Exercise + sets grid (unilateral support, per-set prev markers)
-//  6) Review (this vs last vs best) + Save
-//
-// Data model:
-//  - exercisesData (from exercises.js) with schema:
-//      { name, categories:[], equipment:[], muscles:[] }
-//  - userWorkoutData in localStorage keyed by exercise name:
-//      userWorkoutData[exerciseName] = { bestWeight, records: [ { id,date,sets,reps,setWeights | left/right, movementType, maxWeight } ] }
-//
-// Notes:
-//  - Case-insensitive matching for categories, muscles, equipment
-//  - Accepts both "category" or "categories", "muscle" or "muscles", "equipment" as string or array
-//  - Shows home-only equipment (body weight, resistance bands, kettlebell) when location = home
-//  - Preserves step + scroll when switching between Logger/History
-// ========================================================
-
 
 // -------------------------
 // Global state
@@ -57,6 +35,7 @@ function equipmentsOf(e){
   return [];
 }
 function capEach(s){ return s.split(" ").map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(" "); }
+function getExercises(){ return Array.isArray(window.exercisesData) ? window.exercisesData : []; }
 
 // -------------------------
 // DOM helpers
@@ -115,7 +94,6 @@ window._clearData = () => {
   }
 };
 
-
 // -------------------------
 // Init
 // -------------------------
@@ -130,18 +108,18 @@ document.addEventListener("DOMContentLoaded", () => {
   goToStep(1);
   updateReviewButtonState();
 
-  // Nav buttons
+  // Wizard nav
   on("#next-btn", "click", nextStep);
   on("#prev-btn", "click", prevStep);
   on("#add-exercise-btn", "click", addExerciseToWorkout);
   on("#edit-exercises-btn", "click", () => goToStep(5));
   on("#save-session-btn", "click", saveSession);
 
-  // Header switchers
+  // Header: History <-> Logger
   on("#to-history", "click", showHistoryView);
   on("#to-logger", "click", showLoggerView);
 
-  // Timing radios (step 2)
+  // Timing (Step 2)
   document.querySelectorAll("input[name='timing']").forEach(radio => {
     radio.addEventListener("change", e => {
       const v = e.target.value;
@@ -156,21 +134,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Category change => toggle muscle picker + clear downstream
+  // Step 3: category → show/hide muscle + clear downstream
   on("#work-on-select", "change", () => {
     const cat = norm(val("#work-on-select"));
     const g = document.getElementById("muscle-select-group");
     if (g) g.style.display = (cat === "specific muscle") ? "block" : "none";
     setOptions("#equipment-select", ["--Select--"]);
     setOptions("#exercise-select", ["--Select--"]);
+    // Immediately try to populate equipment when category changes
+    populateEquipment();
   });
-  // Muscle change => clear downstream
+  // Step 3: muscle → clear downstream + repopulate equipment
   on("#muscle-select", "change", () => {
     setOptions("#equipment-select", ["--Select--"]);
     setOptions("#exercise-select", ["--Select--"]);
+    populateEquipment();
+  });
+  // Step 1: location → repopulate equipment (home filter)
+  on("#workout-type-select", "change", () => {
+    populateEquipment();
+  });
+  // Step 4: when equipment changes → populate exercises
+  on("#equipment-select", "change", () => {
+    populateExercises();
   });
 });
-
 
 // ========================================================
 // Wizard nav
@@ -230,7 +218,6 @@ function updateReviewButtonState() {
   }
 }
 
-
 // ========================================================
 // Dropdowns & filtering
 // ========================================================
@@ -242,7 +229,7 @@ function populateWorkoutTypeDropdown() {
 }
 
 function populateWorkOnDropdown() {
-  const data = Array.isArray(window.exercisesData) ? window.exercisesData : [];
+  const data = getExercises();
   const found = new Set();
   for (const e of data) categoriesOf(e).forEach(c => found.add(c));
 
@@ -254,7 +241,7 @@ function populateWorkOnDropdown() {
 
   setOptions("#work-on-select", ["--Select--", ...categories], v => {
     if (v === "--Select--") return { value: "", text: v };
-    return { value: v, text: capEach(v) };
+    return { value: v, text: capEach(v) }; // value lowercase, label nicely capped
   });
 }
 
@@ -271,20 +258,19 @@ function populateMuscleDropdown() {
 }
 
 function populateEquipment() {
-  const all       = Array.isArray(window.exercisesData) ? window.exercisesData : [];
+  const all       = getExercises();
   const category  = norm(val("#work-on-select"));
   const location  = norm(val("#workout-type-select"));
   const muscle    = norm(val("#muscle-select"));
 
   if (!category) { setOptions("#equipment-select", ["--Select--"]); return; }
 
-  // category (and optional muscle)
   let filtered = all.filter(e => categoriesOf(e).includes(category));
+
   if (category === "specific muscle" && muscle) {
     filtered = filtered.filter(e => musclesOf(e).includes(muscle));
   }
 
-  // Home-only equipment
   if (location === "home") {
     const HOME = new Set(["body weight","resistance bands","kettlebell"]);
     filtered = filtered.filter(e => equipmentsOf(e).some(eq => HOME.has(eq)));
@@ -292,7 +278,6 @@ function populateEquipment() {
 
   const equipments = [...new Set(filtered.flatMap(equipmentsOf))].sort((a,b)=>a.localeCompare(b));
 
-  // Diagnostics
   if (equipments.length === 0) {
     console.warn("[populateEquipment] No equipment found", { category, muscle: muscle || "(n/a)", location });
   }
@@ -306,7 +291,7 @@ function populateEquipment() {
 }
 
 function populateExercises() {
-  const all        = Array.isArray(window.exercisesData) ? window.exercisesData : [];
+  const all        = getExercises();
   const category   = norm(val("#work-on-select"));
   const equipment  = norm(val("#equipment-select"));
   const muscle     = norm(val("#muscle-select"));
@@ -320,6 +305,10 @@ function populateExercises() {
   pool = pool.filter(e => equipmentsOf(e).includes(equipment));
 
   const names = [...new Set(pool.map(e => e.name))].sort((a,b)=>a.localeCompare(b));
+  if (names.length === 0) {
+    console.warn("[populateExercises] No exercises for:", { category, muscle: muscle || "(n/a)", equipment });
+  }
+
   setOptions("#exercise-select", ["--Select--", ...names], v => {
     if (v === "--Select--") return { value: "", text: v };
     return { value: v, text: v };
@@ -342,7 +331,6 @@ function populateExercises() {
 
   renderSetWeightInputs();
 }
-
 
 // ========================================================
 // Sets grid + per-set "Prev" markers
@@ -467,7 +455,6 @@ function buildSetRow({ repsPlaceholder, prevText, weightPlaceholder, attrs = {} 
   return row;
 }
 
-
 // ========================================================
 // Add/remove exercises (Step 5)
 // ========================================================
@@ -582,7 +569,6 @@ function removeExerciseFromWorkout(index) {
   renderCurrentWorkoutList();
   updateReviewButtonState();
 }
-
 
 // ========================================================
 // Review (Step 6)
@@ -707,7 +693,6 @@ function buildComparisons(exName, currentMax) {
   };
 }
 
-
 // ========================================================
 // Save session
 // ========================================================
@@ -751,7 +736,6 @@ function saveSession() {
   goToStep(1);
   updateReviewButtonState();
 }
-
 
 // ========================================================
 // History view + chart + edit/delete
@@ -809,6 +793,7 @@ function displayExerciseHistory() {
 
   if (!exName || !userWorkoutData[exName]?.records?.length) {
     if (details) details.style.display = "none";
+    if (myChart) myChart.destroy();
     return;
   }
 
@@ -976,7 +961,6 @@ function editRecord(exName, recordId) {
   renderCurrentWorkoutList();
   updateReviewButtonState();
 }
-
 
 // ========================================================
 // Validation
