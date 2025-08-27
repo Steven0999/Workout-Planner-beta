@@ -1,109 +1,387 @@
+/* =========================================================
+   Workout Session Logger — style.css (full)
+   Dark theme with orange accents
+========================================================= */
+
+/* Base layout */
+:root {
+  --bg: #000;
+  --panel: #1d1d1d;
+  --panel-2: #222;
+  --elev-1: #2a2a2a;
+  --elev-2: #333;
+  --text: #fff;
+  --muted: #bfbfbf;
+  --accent: #ff9800; /* orange */
+  --accent-2: #ffa726;
+  --danger: #d9534f;
+  --success: #28a745;
+  --border: #3d3d3d;
+  --shadow: 0 10px 25px rgba(0,0,0,0.35);
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
 body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background: black;
-  color: white;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
   margin: 0;
   padding: 0;
+  line-height: 1.5;
 }
-.page { display: none; padding: 20px; }
-.active { display: block; }
-h1, h2 { color: orange; }
 
+/* Pages */
+.page { display: none; padding: 16px; }
+.page.active { display: block; }
+
+/* Containers */
 .container {
-  max-width: 860px;
-  margin: 20px auto;
-  padding: 20px;
-  background: #222;
-  border-radius: 10px;
+  max-width: 900px;
+  margin: 32px auto;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
-.form-group { margin-bottom: 15px; text-align: left; }
-.form-group label, .form-group select, .form-group input, .form-group button {
-  display: block; width: 100%; box-sizing: border-box; margin-top: 5px;
+h1, h2, h3 {
+  margin: 0 0 12px 0;
+  color: var(--accent);
+  font-weight: 700;
 }
-.form-group select,
-.form-group input[type="number"],
-.form-group input[type="datetime-local"] {
-  padding: 10px; border-radius: 5px; border: 1px solid #444; background: #333; color: white;
-}
+h1 { font-size: 1.9rem; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.15rem; color: var(--accent-2); }
 
-button {
-  margin: 10px; padding: 15px 30px; font-size: 18px;
-  border: none; border-radius: 8px; background: grey; color: orange; cursor: pointer; width: auto;
-}
-button:hover { background: #555; }
-button.secondary { background: #444; color: #ddd; }
-button.secondary:hover { background: #555; }
-
+/* Header Button (page switch) */
 .header-btn {
-  position: absolute; top: 10px; right: 10px;
-  padding: 10px 15px; font-size: 14px; background: orange; color: black;
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  padding: 10px 14px;
+  font-size: 14px;
+  background: var(--accent);
+  color: #111;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.header-btn:hover { filter: brightness(1.05); }
+
+/* Form groups & controls */
+.form-group {
+  margin: 14px 0;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
-.steps-indicator {
-  display: flex; justify-content: center; gap: 10px; margin-bottom: 15px;
+select, input[type="number"], input[type="datetime-local"], input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--elev-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+select:focus, input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,152,0,0.18);
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #ffd8a6;
+}
+
+/* Wizard */
+.wizard { margin-top: 8px; }
+.wizard-step {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+/* Optional step badges (if you add them) */
 .step-badge {
-  background: #444; color: #ccc; border-radius: 999px; width: 32px; height: 32px;
-  display: inline-flex; align-items: center; justify-content: center; font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 12px 0;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  background: var(--elev-1);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
-.step-badge.active { background: orange; color: black; }
-
-.step-nav {
-  display: flex; justify-content: space-between; align-items: center; margin-top: 10px;
+.step-badge.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(255,152,0,0.1);
 }
 
-.radio-row { display: flex; gap: 20px; }
-.hint { color: #bbb; }
+/* Wizard Nav */
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  border-top: 1px dashed var(--border);
+  padding-top: 16px;
+}
+button {
+  appearance: none;
+  padding: 14px 22px;
+  font-size: 16px;
+  border: none;
+  border-radius: 10px;
+  background: #6a6a6a;
+  color: var(--accent);
+  cursor: pointer;
+  transition: transform 0.05s ease, filter 0.15s ease, background 0.2s ease;
+}
+button:hover { filter: brightness(1.05); }
+button:active { transform: translateY(1px); }
 
+#prev-btn {
+  background: #444;
+  color: #f0f0f0;
+}
+#next-btn {
+  background: var(--accent);
+  color: #111;
+  font-weight: 700;
+}
+#next-btn.is-disabled,
+button:disabled {
+  background: #3c3c3c !important;
+  color: #9a9a9a !important;
+  cursor: not-allowed !important;
+  filter: none !important;
+}
+
+/* Edit mode banner */
+.edit-mode-indicator {
+  color: #ffe066;
+  font-style: italic;
+  margin-bottom: 10px;
+}
+
+/* Sets grid (Step 5) */
+#sets-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.set-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+/* Current session list */
+#current-workout-list-container {
+  margin-top: 16px;
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
 #current-workout-list {
-  background: #333; padding: 10px; border-radius: 5px; margin-top: 20px; text-align: left;
+  margin-top: 8px;
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
 }
-.workout-item { border-bottom: 1px solid #444; padding: 8px 0; }
+.workout-item {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 6px 14px;
+  position: relative;
+}
 .workout-item:last-child { border-bottom: none; }
 
-#history-chart-container { margin-top: 20px; }
+.workout-item button {
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  position: absolute;
+  right: 6px;
+  bottom: 8px;
+}
+
+/* History view */
+#history-details {
+  margin-top: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
 .chart-container {
-  position: relative; height: 400px; width: 100%;
-  background: #111; border-radius: 5px; padding: 10px;
+  position: relative;
+  height: 380px;
+  width: 100%;
+  background: #111;
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  margin-top: 12px;
 }
 
+/* History record list */
+#history-log {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0 0;
+}
 #history-log li {
-  display: flex; justify-content: space-between; align-items: center;
-  background: #333; margin: 10px 0; padding: 10px; border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 10px;
+  gap: 10px;
 }
-.history-actions button { padding: 5px 10px; font-size: 14px; margin-left: 5px; }
-.history-actions .edit-btn { background: #5a5; color: white; }
-.history-actions .delete-btn { background: #a55; color: white; }
+.history-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.history-actions .edit-btn {
+  background: #3fa56c;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.history-actions .delete-btn {
+  background: #c15656;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
 
-.edit-mode-indicator { color: yellow; font-style: italic; margin-bottom: 10px; }
-
-/* Step 5 sets grid: each row has reps+weight */
-#sets-grid { display: grid; gap: 10px; margin-top: 10px; }
-.set-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-}
-.set-row input {
-  background: #555; color: white; border: 1px solid #444;
-  border-radius: 5px; padding: 10px; width: 100%; box-sizing: border-box;
-}
-button:disabled,
-button.is-disabled {
-  background: #444 !important;
-  color: #999 !important;
-  cursor: not-allowed !important;
-  opacity: 0.8;
-}
-/* Session Summary */
-.summary-card {
-  background: #111; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: left;
+/* Summary cards (Step 6) */
+#summary-meta, #summary-totals, #summary-exercises {
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
   margin-bottom: 12px;
 }
-.summary-row { display: grid; grid-template-columns: 160px auto; gap: 10px; margin: 6px 0; }
-.summary-exercise {
-  background: #333; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: left;
+.summary-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
 }
-.summary-exercise small { color: #bbb; }
-.summary-totals { margin-top: 10px; text-align: left; background:#111; border:1px solid #333; border-radius:8px; padding:10px; }
-.summary-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.summary-row:last-child { border-bottom: none; }
+.summary-exercise {
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+/* Utilities */
+.text-muted { color: var(--muted); }
+.center { text-align: center; }
+
+/* Scrollbars (WebKit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #4b4b4b; border-radius: 8px; }
+::-webkit-scrollbar-track { background: #171717; }
+
+/* Inputs: radio/checkbox tweaks */
+input[type="radio"], input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* Make buttons large/tappable on mobile */
+button, .header-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Responsive tweaks */
+@media (max-width: 720px) {
+  .container {
+    margin: 16px auto 28px;
+    padding: 16px;
+  }
+
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.25rem; }
+
+  .wizard-nav {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(180deg, rgba(29,29,29,0.75), var(--panel));
+    border-top: 1px solid var(--border);
+    padding: 12px;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+  }
+
+  #sets-grid {
+    grid-template-columns: 1fr;
+  }
+  .set-row {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .header-btn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+  }
+}
+
+/* Extra-small phones */
+@media (max-width: 400px) {
+  button { font-size: 15px; padding: 12px 16px; }
+  .history-actions .edit-btn, .history-actions .delete-btn { font-size: 12px; }
+}
+
+/* Focus outline for accessibility */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(255,152,0,0.75);
+  outline-offset: 2px;
+  }
