@@ -1,5 +1,5 @@
 /* Condensed exercise library (each exercise appears ONCE). */
-const exercisesData = [
+window.EXERCISES = [
   // HINGE / POSTERIOR
   {
     name: "Romanian Deadlift",
