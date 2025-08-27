@@ -34,12 +34,6 @@ const FIXED_CATEGORIES = [
   "core",
   "specific muscle"
 ];
-function normalizeCategory(c0) {
-  const c = String(c0 || "").toLowerCase().trim();
-  if (c === "upper") return "upper body";
-  if (c === "lower" || c === "legs") return "lower body";
-  return c;
-}
 
 /* ---- Normalization PATCH (robustly read your library) ---- */
 function toLowerArray(val) {
