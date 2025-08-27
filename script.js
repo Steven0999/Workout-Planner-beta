@@ -1,8 +1,6 @@
 /* =======================================================================
-   Workout Session Logger — script.js (FULL, with:
-   - Last/Best insights + trend vs last
-   - Page/step persistence between Logger/History
-   - Unilateral/Bilateral + Side selection for exercises
+   Workout Session Logger — script.js
+   Unilateral update: separate Left/Right set grids (reps + weight)
 ======================================================================= */
 
 /* ---- Crash guard ---- */
@@ -62,9 +60,13 @@ let editingRecord = null;
 const wizard = {
   location: "", timing: "", datetime: "",
   category: "", muscle: "", equipment: "", exercise: "",
-  movementType: "bilateral", // NEW: 'bilateral' | 'unilateral'
-  side: "",                  // NEW: if unilateral
-  sets: 3, setReps: [], setWeights: [],
+  movementType: "bilateral", // 'bilateral' | 'unilateral'
+  sets: 3,
+  // Bilateral arrays
+  setReps: [], setWeights: [],
+  // Unilateral arrays (Left / Right)
+  setRepsL: [], setWeightsL: [],
+  setRepsR: [], setWeightsR: [],
   maxWeight: 0, maxWeightSetCount: 0
 };
 
@@ -74,19 +76,38 @@ const pageScroll = { logger: 0, history: 0 };
 
 /* ======================================================================
    History helpers (last / best) + trend
+   (Compatible with both bilateral and unilateral records)
 ====================================================================== */
+
 function getExerciseRecordsDesc(exName) {
   const recs = (userWorkoutData[exName]?.records || []).slice();
   recs.sort((a, b) => new Date(b.date) - new Date(a.date));
   return recs;
 }
+
+/* Extract arrays for any record, supporting unilateral/bilateral */
+function extractWeightsAndReps(record) {
+  if (record.setWeightsL && record.setWeightsR) {
+    const wAll = [...record.setWeightsL, ...record.setWeightsR];
+    const rAll = [
+      ...(record.setRepsL || Array(record.setWeightsL.length).fill(null)),
+      ...(record.setRepsR || Array(record.setWeightsR.length).fill(null))
+    ];
+    return { weights: wAll, reps: rAll };
+  }
+  return {
+    weights: Array.isArray(record.setWeights) ? record.setWeights : [],
+    reps: Array.isArray(record.setReps) ? record.setReps : []
+  };
+}
+
+/** Last session’s heaviest set (across both sides if unilateral) */
 function getLastHeaviestWithReps(exName) {
   const recs = getExerciseRecordsDesc(exName);
   if (recs.length === 0) return null;
 
   const r = recs[0];
-  const weights = Array.isArray(r.setWeights) ? r.setWeights : [];
-  const reps = Array.isArray(r.setReps) ? r.setReps : [];
+  const { weights, reps } = extractWeightsAndReps(r);
   if (weights.length === 0) return { maxWeight: r.maxWeight ?? 0, reps: null, date: r.date };
 
   const maxW = Math.max(...weights);
@@ -95,21 +116,21 @@ function getLastHeaviestWithReps(exName) {
 
   return { maxWeight: maxW, reps: repsAtMax, date: r.date };
 }
+
+/** All-time heaviest and reps (across both sides if unilateral) */
 function getBestHeaviestWithReps(exName) {
   const bestW = userWorkoutData[exName]?.bestWeight ?? null;
   if (bestW == null) return null;
 
   const recs = getExerciseRecordsDesc(exName).slice().reverse(); // oldest -> newest
   for (const r of recs) {
-    const weights = Array.isArray(r.setWeights) ? r.setWeights : [];
-    const reps = Array.isArray(r.setReps) ? r.setReps : [];
+    const { weights, reps } = extractWeightsAndReps(r);
     const i = weights.findIndex((w) => w === bestW);
-    if (i >= 0) {
-      return { maxWeight: bestW, reps: reps[i] ?? null, date: r.date };
-    }
+    if (i >= 0) return { maxWeight: bestW, reps: reps[i] ?? null, date: r.date };
   }
   return { maxWeight: bestW, reps: null, date: null };
 }
+
 function getTrendAgainstLast(exName, currentMax) {
   const last = getLastHeaviestWithReps(exName);
   if (!last || last.maxWeight == null) return { dir: "na", delta: null };
@@ -313,13 +334,16 @@ function validateAndStoreStep4() {
 }
 
 /* ======================================================================
-   Step 5 — Exercise + sets (with insights + unilateral/bilateral)
+   Step 5 — Exercise + sets (with insights + unilateral L/R grids)
 ====================================================================== */
 function initStep5() {
   const setsInput = document.getElementById("sets-input");
   setsInput.value = wizard.sets;
-  setsInput.addEventListener("change", () => { wizard.sets = Math.max(1, toInt(setsInput.value, 1)); renderSetRows(wizard.sets); });
-  renderSetRows(wizard.sets);
+  setsInput.addEventListener("change", () => {
+    wizard.sets = Math.max(1, toInt(setsInput.value, 1));
+    renderSetRows(); // re-render grids based on movement type
+  });
+  renderSetRows();
 }
 
 /* ----- dynamic info & controls under exercise select ----- */
@@ -335,71 +359,30 @@ function ensureInsightsNode() {
   }
   return node;
 }
-function ensureMovementControls() {
-  // Wrapper below insights
-  let wrap = document.getElementById("movement-controls");
+function ensureMovementTypeControl() {
+  // One select: Bilateral / Unilateral
+  let wrap = document.getElementById("movement-type-wrap");
   const insights = ensureInsightsNode();
   if (!wrap) {
     wrap = document.createElement("div");
-    wrap.id = "movement-controls";
-    wrap.style.margin = "10px 0";
+    wrap.id = "movement-type-wrap";
+    wrap.className = "form-group";
     wrap.innerHTML = `
-      <div class="form-group" id="movement-type-group">
-        <label>Movement Type</label>
-        <select id="movement-type-select">
-          <option value="bilateral">Bilateral</option>
-          <option value="unilateral">Unilateral</option>
-        </select>
-      </div>
-      <div class="form-group" id="movement-side-group" style="display:none;">
-        <label for="movement-side-select">Side</label>
-        <select id="movement-side-select">
-          <option value="">-- Select Side --</option>
-          <optgroup label="Arms">
-            <option value="left arm">Left Arm</option>
-            <option value="right arm">Right Arm</option>
-          </optgroup>
-          <optgroup label="Legs">
-            <option value="left leg">Left Leg</option>
-            <option value="right leg">Right Leg</option>
-          </optgroup>
-          <option value="other">Other</option>
-        </select>
-      </div>
+      <label>Movement Type</label>
+      <select id="movement-type-select">
+        <option value="bilateral">Bilateral</option>
+        <option value="unilateral">Unilateral</option>
+      </select>
     `;
     insights.parentElement.insertBefore(wrap, insights.nextSibling);
 
     const typeSel = wrap.querySelector("#movement-type-select");
-    const sideGrp = wrap.querySelector("#movement-side-group");
-    const sideSel = wrap.querySelector("#movement-side-select");
-
     typeSel.addEventListener("change", () => {
       wizard.movementType = typeSel.value;
-      if (wizard.movementType === "unilateral") {
-        sideGrp.style.display = "block";
-      } else {
-        sideGrp.style.display = "none";
-        sideSel.value = "";
-        wizard.side = "";
-      }
-    });
-    sideSel.addEventListener("change", () => {
-      wizard.side = sideSel.value;
+      renderSetRows(); // re-render row grids according to selection
     });
   }
-
-  // set defaults from wizard state
-  const typeSel = wrap.querySelector("#movement-type-select");
-  const sideGrp = wrap.querySelector("#movement-side-group");
-  const sideSel = wrap.querySelector("#movement-side-select");
-  typeSel.value = wizard.movementType || "bilateral";
-  if (typeSel.value === "unilateral") {
-    sideGrp.style.display = "block";
-    sideSel.value = wizard.side || "";
-  } else {
-    sideGrp.style.display = "none";
-    sideSel.value = "";
-  }
+  wrap.querySelector("#movement-type-select").value = wizard.movementType || "bilateral";
   return wrap;
 }
 
@@ -435,26 +418,109 @@ function populateExercises() {
   if (names.includes(wizard.exercise)) select.value = wizard.exercise;
 
   showExerciseInsights(select.value || null);
-  ensureMovementControls(); // ensure unilateral/bilateral controls are present
+  ensureMovementTypeControl();
 
   select.onchange = () => {
     wizard.exercise = select.value;
     showExerciseInsights(wizard.exercise);
-    ensureMovementControls();
+    ensureMovementTypeControl();
   };
+
+  // Always render rows (in case movement type changed on previous visit)
+  renderSetRows();
 }
 
-function renderSetRows(n) {
-  const grid = document.getElementById("sets-grid");
-  grid.innerHTML = "";
-  for (let i = 1; i <= n; i++) {
-    const row = document.createElement("div");
-    row.className = "set-row";
-    row.innerHTML = `
-      <input type="number" min="1" step="1" placeholder="Set ${i}: Reps" data-kind="reps" data-idx="${i - 1}">
-      <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)" data-kind="weight" data-idx="${i - 1}">
-    `;
-    grid.appendChild(row);
+/* Render set inputs:
+   - Bilateral: single grid (id: sets-grid)
+   - Unilateral: two grids (Left: sets-grid-left, Right: sets-grid-right)
+*/
+function renderSetRows() {
+  const n = Math.max(1, toInt(document.getElementById("sets-input").value, 1));
+  wizard.sets = n;
+
+  // Ensure container exists
+  let container = document.getElementById("sets-grids-wrapper");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "sets-grids-wrapper";
+    const anchor = document.getElementById("sets-grid") || document.getElementById("exercise-inputs");
+    if (anchor && anchor.parentElement) {
+      // Replace old single grid if present
+      const old = document.getElementById("sets-grid");
+      if (old) old.parentElement.replaceChild(container, old);
+      else anchor.appendChild(container);
+    }
+  }
+  container.innerHTML = "";
+
+  if (wizard.movementType === "unilateral") {
+    // LEFT
+    const left = document.createElement("div");
+    left.className = "form-group";
+    left.innerHTML = `<label>Left Side — Reps & Weight</label><div id="sets-grid-left" class="sets-grid"></div>`;
+    container.appendChild(left);
+
+    // RIGHT
+    const right = document.createElement("div");
+    right.className = "form-group";
+    right.innerHTML = `<label>Right Side — Reps & Weight</label><div id="sets-grid-right" class="sets-grid"></div>`;
+    container.appendChild(right);
+
+    const gridL = left.querySelector("#sets-grid-left");
+    const gridR = right.querySelector("#sets-grid-right");
+
+    gridL.innerHTML = ""; gridR.innerHTML = "";
+    for (let i = 1; i <= n; i++) {
+      const rowL = document.createElement("div");
+      rowL.className = "set-row";
+      rowL.innerHTML = `
+        <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (L)" data-side="L" data-kind="reps" data-idx="${i - 1}">
+        <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (L)" data-side="L" data-kind="weight" data-idx="${i - 1}">
+      `;
+      gridL.appendChild(rowL);
+
+      const rowR = document.createElement("div");
+      rowR.className = "set-row";
+      rowR.innerHTML = `
+        <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (R)" data-side="R" data-kind="reps" data-idx="${i - 1}">
+        <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (R)" data-side="R" data-kind="weight" data-idx="${i - 1}">
+      `;
+      gridR.appendChild(rowR);
+    }
+
+    // Prefill if wizard already has arrays
+    if (wizard.setRepsL.length === n && wizard.setWeightsL.length === n) {
+      [...gridL.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsL[i] ?? "");
+      [...gridL.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsL[i] ?? "");
+    }
+    if (wizard.setRepsR.length === n && wizard.setWeightsR.length === n) {
+      [...gridR.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsR[i] ?? "");
+      [...gridR.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsR[i] ?? "");
+    }
+
+  } else {
+    // Bilateral single grid
+    const single = document.createElement("div");
+    single.className = "form-group";
+    single.innerHTML = `<label>Reps & Weight</label><div id="sets-grid" class="sets-grid"></div>`;
+    container.appendChild(single);
+
+    const grid = single.querySelector("#sets-grid");
+    grid.innerHTML = "";
+    for (let i = 1; i <= n; i++) {
+      const row = document.createElement("div");
+      row.className = "set-row";
+      row.innerHTML = `
+        <input type="number" min="1" step="1" placeholder="Set ${i}: Reps" data-kind="reps" data-idx="${i - 1}">
+        <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)" data-kind="weight" data-idx="${i - 1}">
+      `;
+      grid.appendChild(row);
+    }
+    // Prefill if available
+    if (wizard.setReps.length === n && wizard.setWeights.length === n) {
+      [...grid.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setReps[i] ?? "");
+      [...grid.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeights[i] ?? "");
+    }
   }
 }
 
@@ -464,39 +530,57 @@ function validateAndStoreStep5() {
   if (!exercise) { if (hint) hint.textContent = "Choose an exercise."; return false; }
   wizard.exercise = exercise;
 
-  // Movement type + side validation
-  const typeSel = document.getElementById("movement-type-select");
-  const sideSel = document.getElementById("movement-side-select");
-  wizard.movementType = typeSel ? typeSel.value : "bilateral";
-  if (wizard.movementType === "unilateral") {
-    if (!sideSel || !sideSel.value) {
-      if (hint) hint.textContent = "Please choose which side for unilateral movement."; 
-      return false;
-    }
-    wizard.side = sideSel.value;
-  } else {
-    wizard.side = "";
-  }
-
   const n = Math.max(1, toInt(document.getElementById("sets-input").value, 1));
   wizard.sets = n;
 
-  const repsInputs = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
-  const wtInputs = [...document.querySelectorAll('#sets-grid input[data-kind="weight"]')];
+  if (wizard.movementType === "unilateral") {
+    const repsL = [...document.querySelectorAll('#sets-grids-wrapper [data-side="L"][data-kind="reps"]')].map(i => toInt(i.value));
+    const wtsL  = [...document.querySelectorAll('#sets-grids-wrapper [data-side="L"][data-kind="weight"]')].map(i => toFloat(i.value));
+    const repsR = [...document.querySelectorAll('#sets-grids-wrapper [data-side="R"][data-kind="reps"]')].map(i => toInt(i.value));
+    const wtsR  = [...document.querySelectorAll('#sets-grids-wrapper [data-side="R"][data-kind="weight"]')].map(i => toFloat(i.value));
 
-  const setReps = repsInputs.map((i) => toInt(i.value)).filter((v) => v > 0);
-  const setWeights = wtInputs.map((i) => toFloat(i.value)).filter((v) => v >= 0);
+    if (repsL.length !== n || wtsL.length !== n || repsR.length !== n || wtsR.length !== n ||
+        repsL.some(v => v <= 0) || wtsL.some(v => v < 0) || repsR.some(v => v <= 0) || wtsR.some(v => v < 0)) {
+      if (hint) hint.textContent = "Fill reps & weight for every set on both Left and Right sides.";
+      return false;
+    }
 
-  if (setReps.length !== n || setWeights.length !== n) {
-    if (hint) hint.textContent = "Fill reps and weight for every set."; return false;
+    wizard.setRepsL = repsL; wizard.setWeightsL = wtsL;
+    wizard.setRepsR = repsR; wizard.setWeightsR = wtsR;
+
+    // Compute maxes
+    const maxL = Math.max(...wtsL);
+    const maxR = Math.max(...wtsR);
+    const overallMax = Math.max(maxL, maxR);
+    const countOverall = [...wtsL, ...wtsR].filter(w => w === overallMax).length;
+
+    wizard.maxWeight = overallMax;
+    wizard.maxWeightSetCount = countOverall;
+
+    // Clear bilateral arrays to avoid confusion
+    wizard.setReps = []; wizard.setWeights = [];
+
+  } else {
+    const reps = [...document.querySelectorAll('#sets-grids-wrapper [data-kind="reps"]')].map(i => toInt(i.value));
+    const wts  = [...document.querySelectorAll('#sets-grids-wrapper [data-kind="weight"]')].map(i => toFloat(i.value));
+
+    if (reps.length !== n || wts.length !== n || reps.some(v => v <= 0) || wts.some(v => v < 0)) {
+      if (hint) hint.textContent = "Fill reps & weight for every set.";
+      return false;
+    }
+
+    wizard.setReps = reps; wizard.setWeights = wts;
+    const maxW = Math.max(...wts);
+    const maxCount = wts.filter(w => w === maxW).length;
+    wizard.maxWeight = maxW; wizard.maxWeightSetCount = maxCount;
+
+    // Clear unilateral arrays
+    wizard.setRepsL = []; wizard.setWeightsL = [];
+    wizard.setRepsR = []; wizard.setWeightsR = [];
   }
 
-  wizard.setReps = setReps; wizard.setWeights = setWeights;
-  const maxW = Math.max(...setWeights);
-  const maxCount = setWeights.filter((w) => w === maxW).length;
-  wizard.maxWeight = maxW; wizard.maxWeightSetCount = maxCount;
-
-  if (hint) hint.textContent = ""; return true;
+  if (hint) hint.textContent = "";
+  return true;
 }
 
 /* ---- Current session list ---- */
@@ -510,29 +594,38 @@ function addExerciseToWorkout() {
     category: wizard.category,
     equipment: wizard.equipment,
     muscle: wizard.category === "specific muscle" ? wizard.muscle : null,
-    movementType: wizard.movementType, // NEW
-    side: wizard.side || "",           // NEW
+    movementType: wizard.movementType, // 'bilateral' or 'unilateral'
     sets: wizard.sets,
+    // For bilateral
     setReps: wizard.setReps.slice(),
     setWeights: wizard.setWeights.slice(),
+    // For unilateral
+    setRepsL: wizard.setRepsL.slice(),
+    setWeightsL: wizard.setWeightsL.slice(),
+    setRepsR: wizard.setRepsR.slice(),
+    setWeightsR: wizard.setWeightsR.slice(),
+    // Summary
     maxWeight: wizard.maxWeight,
     maxWeightSetCount: wizard.maxWeightSetCount
   };
   currentWorkoutExercises.push(ex);
   renderCurrentWorkoutList();
 
-  // reset inline inputs for next add
+  // Reset inline inputs for next add
   document.getElementById("exercise-select").value = "";
   document.getElementById("sets-input").value = "3";
-  wizard.exercise = ""; wizard.sets = 3; renderSetRows(3);
-  ensureInsightsNode().textContent = "";
-  // reset movement control to bilateral by default
+  wizard.exercise = ""; wizard.sets = 3;
   wizard.movementType = "bilateral";
-  wizard.side = "";
-  ensureMovementControls();
+  wizard.setReps = []; wizard.setWeights = [];
+  wizard.setRepsL = []; wizard.setWeightsL = [];
+  wizard.setRepsR = []; wizard.setWeightsR = [];
+  wizard.maxWeight = 0; wizard.maxWeightSetCount = 0;
+  renderSetRows();
+  ensureInsightsNode().textContent = "";
 
   updateReviewButtonState();
 }
+
 function renderCurrentWorkoutList() {
   const wrap = document.getElementById("current-workout-list-container");
   const list = document.getElementById("current-workout-list");
@@ -540,15 +633,32 @@ function renderCurrentWorkoutList() {
   if (currentWorkoutExercises.length > 0) {
     wrap.style.display = "block";
     currentWorkoutExercises.forEach((ex, idx) => {
-      const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
-      const moveMeta = ex.movementType === "unilateral" ? ` • ${title(ex.side)}` : "";
-      const meta = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}${moveMeta}`;
+      let details = "";
+      if (ex.movementType === "unilateral") {
+        const pairsL = ex.setRepsL.map((r, i) => `${r}x${ex.setWeightsL[i]}kg`).join(", ");
+        const pairsR = ex.setRepsR.map((r, i) => `${r}x${ex.setWeightsR[i]}kg`).join(", ");
+        const maxL = Math.max(...ex.setWeightsL);
+        const maxR = Math.max(...ex.setWeightsR);
+        const cL = ex.setWeightsL.filter(w => w === maxL).length;
+        const cR = ex.setWeightsR.filter(w => w === maxR).length;
+        details = `
+          <div><em>Left:</em> ${pairsL}</div>
+          <div><em>Right:</em> ${pairsR}</div>
+          <div>Heaviest Left: ${maxL}kg for ${cL} set(s) • Heaviest Right: ${maxR}kg for ${cR} set(s)</div>
+        `;
+      } else {
+        const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
+        details = `
+          <div>${ex.sets} sets → ${pairs}</div>
+          <div>Heaviest: ${ex.maxWeight}kg for ${ex.maxWeightSetCount} set(s)</div>
+        `;
+      }
+      const meta = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}`;
       const div = document.createElement("div");
       div.className = "workout-item";
       div.innerHTML = `
         <strong>${ex.name}</strong> <small>(${meta})</small><br>
-        ${ex.sets} sets → ${pairs}<br>
-        Heaviest: ${ex.maxWeight}kg for ${ex.maxWeightSetCount} set(s)
+        ${details}
         <button onclick="removeExerciseFromWorkout(${idx})" style="float:right; padding:6px 10px; font-size:12px; margin-top:-5px; background:#a55; color:#fff; border-radius:8px;">Remove</button>
       `;
       list.appendChild(div);
@@ -589,25 +699,50 @@ function buildSessionSummary() {
       if (trend.dir === "same") badge = ` <span style="color:#ffb300;">= ${trend.delta}kg</span>`;
       if (trend.dir === "na")   badge = ` <span style="color:#9aa0a6;">— no history</span>`;
 
-      const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
-      const moveMeta = ex.movementType === "unilateral" ? ` • ${title(ex.side)}` : "";
-      const metaLine = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}${moveMeta}`;
+      let details = "";
+      if (ex.movementType === "unilateral") {
+        const pairsL = ex.setRepsL.map((r, i) => `${r}x${ex.setWeightsL[i]}kg`).join(", ");
+        const pairsR = ex.setRepsR.map((r, i) => `${r}x${ex.setWeightsR[i]}kg`).join(", ");
+        const maxL = Math.max(...ex.setWeightsL);
+        const maxR = Math.max(...ex.setWeightsR);
+        const cL = ex.setWeightsL.filter(w => w === maxL).length;
+        const cR = ex.setWeightsR.filter(w => w === maxR).length;
+        details = `
+          <div><em>Left:</em> ${pairsL}</div>
+          <div><em>Right:</em> ${pairsR}</div>
+          <div>Heaviest Left: <strong>${maxL}kg</strong> (${cL} set${cL!==1?"s":""}) • Heaviest Right: <strong>${maxR}kg</strong> (${cR} set${cR!==1?"s":""})</div>
+          <div>Overall Heaviest this session: <strong>${ex.maxWeight}kg</strong>${badge}</div>
+        `;
+      } else {
+        const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
+        details = `
+          <div>${ex.sets} sets → ${pairs}</div>
+          <div>Heaviest this session: <strong>${ex.maxWeight}kg</strong>${badge}</div>
+        `;
+      }
 
+      const metaLine = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}`;
       const card = document.createElement("div");
       card.className = "summary-exercise";
       card.innerHTML = `
-        <strong>${ex.name}</strong> <small>(${metaLine})</small>${badge}<br>
-        ${ex.sets} sets → ${pairs}<br>
-        Heaviest this session: <strong>${ex.maxWeight}kg</strong>
+        <strong>${ex.name}</strong> <small>(${metaLine})</small><br>
+        ${details}
       `;
       exWrap.appendChild(card);
     });
   }
 
+  // Totals
   let totalVolume = 0, totalSets = 0, totalExercises = currentWorkoutExercises.length;
   currentWorkoutExercises.forEach((ex) => {
-    totalSets += ex.sets;
-    ex.setReps.forEach((r, i) => totalVolume += r * ex.setWeights[i]);
+    if (ex.movementType === "unilateral") {
+      totalSets += ex.sets * 2;
+      ex.setRepsL.forEach((r, i) => totalVolume += r * ex.setWeightsL[i]);
+      ex.setRepsR.forEach((r, i) => totalVolume += r * ex.setWeightsR[i]);
+    } else {
+      totalSets += ex.sets;
+      ex.setReps.forEach((r, i) => totalVolume += r * ex.setWeights[i]);
+    }
   });
   totals.innerHTML = `
     <div><strong>Total Exercises:</strong> ${totalExercises}</div>
@@ -626,9 +761,14 @@ function saveSession() {
     userWorkoutData[ex.name].records.push({
       id: ex.id, date: dt,
       category: ex.category, equipment: ex.equipment, muscle: ex.muscle,
-      movementType: ex.movementType || "bilateral", // NEW
-      side: ex.side || "",                           // NEW
-      sets: ex.sets, setReps: ex.setReps, setWeights: ex.setWeights,
+      movementType: ex.movementType,
+      // bilateral
+      setReps: ex.setReps, setWeights: ex.setWeights,
+      // unilateral
+      setRepsL: ex.setRepsL, setWeightsL: ex.setWeightsL,
+      setRepsR: ex.setRepsR, setWeightsR: ex.setWeightsR,
+      // summary
+      sets: ex.sets,
       maxWeight: ex.maxWeight, maxWeightSetCount: ex.maxWeightSetCount
     });
     if (ex.maxWeight > userWorkoutData[ex.name].bestWeight) {
@@ -644,8 +784,12 @@ function saveSession() {
   Object.assign(wizard, {
     location: "", timing: "now", datetime: nowIsoMinute(),
     category: "", muscle: "", equipment: "", exercise: "",
-    movementType: "bilateral", side: "",
-    sets: 3, setReps: [], setWeights: [], maxWeight: 0, maxWeightSetCount: 0
+    movementType: "bilateral",
+    sets: 3,
+    setReps: [], setWeights: [],
+    setRepsL: [], setWeightsL: [],
+    setRepsR: [], setWeightsR: [],
+    maxWeight: 0, maxWeightSetCount: 0
   });
 
   const typeSel = document.getElementById("workout-type-select"); if (typeSel) typeSel.value = "";
@@ -657,14 +801,13 @@ function saveSession() {
   const eqSel = document.getElementById("equipment-select"); if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
   const exSel = document.getElementById("exercise-select"); if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
   const setsInput = document.getElementById("sets-input"); if (setsInput) setsInput.value = "3";
-  renderSetRows(3);
-  ensureMovementControls(); // reset UI
+  renderSetRows();
 
   goToStep(1);
 }
 
 /* ======================================================================
-   History view
+   History view (shows unilateral Left/Right if present)
 ====================================================================== */
 function showHistoryView() {
   lastLoggerStep = currentStep || lastLoggerStep;
@@ -746,18 +889,38 @@ function displayExerciseHistory() {
   historyLog.innerHTML = "";
   sortedRecords.forEach((record) => {
     const dateString = new Date(record.date).toLocaleString();
-    const pairs = record.setReps
-      ? record.setReps.map((r, i) => `${r}x${record.setWeights[i]}kg`).join(", ")
-      : `Reps: ${record.reps} | Weights: ${record.setWeights.join(", ")}kg`;
-    const moveMeta = record.movementType === "unilateral" ? ` • ${title(record.side || "")}` : "";
-    const meta = `${title(record.category || "n/a")} • ${title(record.equipment || "n/a")}${record.muscle ? ` • ${record.muscle}` : ""} • ${title(record.movementType || "bilateral")}${moveMeta}`;
+
+    let details = "";
+    if (record.movementType === "unilateral" && record.setWeightsL && record.setWeightsR) {
+      const pairsL = record.setRepsL.map((r, i) => `${r}x${record.setWeightsL[i]}kg`).join(", ");
+      const pairsR = record.setRepsR.map((r, i) => `${r}x${record.setWeightsR[i]}kg`).join(", ");
+      const maxL = Math.max(...record.setWeightsL);
+      const maxR = Math.max(...record.setWeightsR);
+      const cL = record.setWeightsL.filter(w => w === maxL).length;
+      const cR = record.setWeightsR.filter(w => w === maxR).length;
+      details = `
+        <div><em>Left:</em> ${pairsL}</div>
+        <div><em>Right:</em> ${pairsR}</div>
+        <div>Heaviest Left: ${maxL}kg for ${cL} set(s) • Heaviest Right: ${maxR}kg for ${cR} set(s)</div>
+      `;
+    } else {
+      const pairs = record.setReps
+        ? record.setReps.map((r, i) => `${r}x${record.setWeights[i]}kg`).join(", ")
+        : `Reps: ${record.reps} | Weights: ${record.setWeights.join(", ")}kg`;
+      details = `
+        <div>Sets: ${record.sets} → ${pairs}</div>
+        <div>Heaviest: ${record.maxWeight}kg${record.maxWeightSetCount ? ` for ${record.maxWeightSetCount} set(s)` : ""}</div>
+      `;
+    }
+
+    const meta = `${title(record.category || "n/a")} • ${title(record.equipment || "n/a")}${record.muscle ? ` • ${record.muscle}` : ""} • ${title(record.movementType || "bilateral")}`;
 
     const li = document.createElement("li");
     li.innerHTML = `
       <span>
         <strong>${selectedExercise}</strong> <small>(${meta})</small><br>
-        Date: ${dateString} | Sets: ${record.sets} | ${pairs}<br>
-        Heaviest: ${record.maxWeight}kg${record.maxWeightSetCount ? ` for ${record.maxWeightSetCount} set(s)` : ""}
+        Date: ${dateString}<br>
+        ${details}
       </span>
       <div class="history-actions">
         <button class="edit-btn" onclick="editRecord('${selectedExercise}', '${record.id}')">Edit</button>
@@ -787,6 +950,7 @@ function deleteRecord(exerciseName, recordId) {
     document.getElementById("history-details").style.display = "none";
   }
 }
+
 function editRecord(exerciseName, recordId) {
   const history = userWorkoutData[exerciseName];
   const record = history.records.find((r) => r.id === recordId);
@@ -799,15 +963,27 @@ function editRecord(exerciseName, recordId) {
   wizard.muscle = record.muscle || "";
   wizard.equipment = record.equipment || "";
   wizard.exercise = exerciseName;
-  wizard.movementType = record.movementType || "bilateral"; // NEW
-  wizard.side = record.side || "";                           // NEW
+  wizard.movementType = record.movementType || "bilateral";
 
-  wizard.sets = record.sets || (record.setWeights ? record.setWeights.length : 3);
-  wizard.setReps = record.setReps ? record.setReps.slice() : Array(wizard.sets).fill(record.reps || 10);
-  wizard.setWeights = record.setWeights ? record.setWeights.slice() : Array(wizard.sets).fill(0);
-  const maxW = Math.max(...wizard.setWeights);
+  wizard.sets = record.sets || 3;
+
+  if (wizard.movementType === "unilateral" && record.setWeightsL && record.setWeightsR) {
+    wizard.setRepsL = (record.setRepsL || []).slice();
+    wizard.setWeightsL = (record.setWeightsL || []).slice();
+    wizard.setRepsR = (record.setRepsR || []).slice();
+    wizard.setWeightsR = (record.setWeightsR || []).slice();
+    wizard.setReps = []; wizard.setWeights = [];
+  } else {
+    wizard.setReps = (record.setReps || []).slice();
+    wizard.setWeights = (record.setWeights || []).slice();
+    wizard.setRepsL = []; wizard.setWeightsL = [];
+    wizard.setRepsR = []; wizard.setWeightsR = [];
+  }
+
+  const { weights } = extractWeightsAndReps(record);
+  const maxW = weights.length ? Math.max(...weights) : (record.maxWeight || 0);
   wizard.maxWeight = Number.isFinite(maxW) ? maxW : 0;
-  wizard.maxWeightSetCount = wizard.setWeights.filter((w) => w === wizard.maxWeight).length;
+  wizard.maxWeightSetCount = weights.filter(w => w === wizard.maxWeight).length || (record.maxWeightSetCount || 0);
 
   editingRecord = record;
 
@@ -828,21 +1004,32 @@ function editRecord(exerciseName, recordId) {
   populateExercises();
   const exSel = document.getElementById("exercise-select"); if (exSel) exSel.value = wizard.exercise;
 
-  // Ensure movement controls show the existing values
-  ensureMovementControls();
-
-  const setsInput = document.getElementById("sets-input"); if (setsInput) setsInput.value = wizard.sets;
-  renderSetRows(wizard.sets);
-  const repInputs = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
-  const wtInputs = [...document.querySelectorAll('#sets-grid input[data-kind="weight"]')];
-  repInputs.forEach((el, i) => el.value = wizard.setReps[i] ?? "");
-  wtInputs.forEach((el, i) => el.value = wizard.setWeights[i] ?? "");
+  // Render rows with existing values
+  renderSetRows();
+  if (wizard.movementType === "unilateral") {
+    const gridL = document.getElementById("sets-grid-left");
+    const gridR = document.getElementById("sets-grid-right");
+    if (gridL && gridR) {
+      [...gridL.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsL[i] ?? "");
+      [...gridL.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsL[i] ?? "");
+      [...gridR.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsR[i] ?? "");
+      [...gridR.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsR[i] ?? "");
+    }
+  } else {
+    const grid = document.getElementById("sets-grid");
+    if (grid) {
+      [...grid.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setReps[i] ?? "");
+      [...grid.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeights[i] ?? "");
+    }
+  }
 
   currentWorkoutExercises = [{
     id: record.id, date: wizard.datetime, name: wizard.exercise, category: wizard.category,
-    equipment: wizard.equipment, muscle: wizard.muscle || null,
-    movementType: wizard.movementType, side: wizard.side || "",
-    sets: wizard.sets, setReps: wizard.setReps.slice(), setWeights: wizard.setWeights.slice(),
+    equipment: wizard.equipment, muscle: wizard.muscle || null, movementType: wizard.movementType,
+    sets: wizard.sets,
+    setReps: wizard.setReps.slice(), setWeights: wizard.setWeights.slice(),
+    setRepsL: wizard.setRepsL.slice(), setWeightsL: wizard.setWeightsL.slice(),
+    setRepsR: wizard.setRepsR.slice(), setWeightsR: wizard.setWeightsR.slice(),
     maxWeight: wizard.maxWeight, maxWeightSetCount: wizard.maxWeightSetCount
   }];
   renderCurrentWorkoutList();
