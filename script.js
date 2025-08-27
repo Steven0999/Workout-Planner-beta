@@ -389,42 +389,51 @@ function validateAndStoreStep2() {
    Step 3 — Category (+ specific muscle)
 ====================================================================== */
 function initStep3() {
+function initStep3() {
   const workOn = document.getElementById("work-on-select");
   const musclesSel = document.getElementById("muscle-select");
   const muscleGroup = document.getElementById("muscle-select-group");
 
-  if (!workOn || !musclesSel) return;
+  if (!workOn || !musclesSel || !muscleGroup) {
+    console.warn("[initStep3] Missing DOM elements for step 3.");
+    return;
+  }
 
-  // Build categories from your data
-  const cats = allCategories();
-  workOn.innerHTML = `<option value="">--Select--</option>${cats.map(c=>`<option value="${c}">${title(c)}</option>`).join("")}`;
-  workOn.value = wizard.category || "";
+  // Fixed categories (no auto-scan that mixes in muscles)
+  workOn.innerHTML = `<option value="">--Select--</option>` +
+    FIXED_CATEGORIES.map(c => `<option value="${c}">${capitalize(c)}</option>`).join("");
 
-  // Build muscles from your data
-  const muscles = allMuscles();
-  musclesSel.innerHTML = `<option value="">--Select--</option>${muscles.map(m=>`<option value="${m}">${m}</option>`).join("")}`;
-  musclesSel.value = wizard.muscle || "";
+  // Build distinct muscles from data (or replace with your static list if preferred)
+  const muscles = [...new Set(EXERCISES_NORM.flatMap(e => e.muscles))].sort((a,b)=>a.localeCompare(b));
+  musclesSel.innerHTML = `<option value="">--Select--</option>` +
+    muscles.map(m => `<option value="${m}">${m}</option>`).join("");
 
-  // Show/hide muscle group when "specific muscle" is selected
-  const setMuscleVisibility = () => {
-    if (String(workOn.value).toLowerCase() === "specific muscle") {
-      muscleGroup.style.display = "block";
-    } else {
-      muscleGroup.style.display = "none";
+  // Restore state if exists
+  if (window.wizard?.category) workOn.value = window.wizard.category;
+  if (window.wizard?.muscle) musclesSel.value = window.wizard.muscle;
+  muscleGroup.style.display = (window.wizard?.category === "specific muscle") ? "block" : "none";
+
+  workOn.onchange = () => {
+    const cat = normalizeCategory(workOn.value);
+    window.wizard.category = cat;
+    window.wizard.equipment = "";
+    window.wizard.exercise = "";
+
+    muscleGroup.style.display = (cat === "specific muscle") ? "block" : "none";
+    if (cat !== "specific muscle") {
+      window.wizard.muscle = "";
       musclesSel.value = "";
-      wizard.muscle = "";
     }
-  };
-  setMuscleVisibility();
 
-  workOn.addEventListener("change", () => {
-    wizard.category = workOn.value;
-    wizard.equipment = ""; wizard.exercise = "";
-    setMuscleVisibility();
-  });
-  musclesSel.addEventListener("change", () => {
-    wizard.muscle = musclesSel.value;
-  });
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
+  };
+
+  musclesSel.onchange = () => {
+    window.wizard.muscle = musclesSel.value;
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
+  };
 }
 function validateAndStoreStep3() {
   const hint = document.getElementById("s3-hint");
