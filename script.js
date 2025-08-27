@@ -1,29 +1,66 @@
-/* =========================================================
-   Workout Logger — script.js (full)
-   - Normalizes exercise data (sections & equipment)
-   - Robust step wizard (Next/Previous)
-   - Equipment/Exercise dropdowns populate reliably
-   - Session Summary + Save to localStorage
-   - History view with Chart.js (heaviest weight over time)
-========================================================= */
+/* =======================================================================
+   Workout Session Logger — script.js (FULL)
+   -----------------------------------------------------------------------
+   Features:
+   - Multi-step wizard:
+       1) Location (Gym/Home)
+       2) Timing (Now/Past) + datetime
+       3) Category (upper/lower/full/push/pull/hinge/squat/core/specific muscle)
+       4) Equipment (machine/tool filtered by location+category+muscle)
+       5) Exercise picker + dynamic set rows (reps/weight) + Add-to-session
+       6) Review/Save summary (disabled until at least one exercise is added)
+   - Exercise library loaded from exercises.js as global EXERCISES (condensed)
+   - Robust normalization for categories/equipment to prevent empty dropdowns
+   - LocalStorage persistence of workout history with best weight tracking
+   - History page: select exercise, chart (Chart.js), list of records,
+     edit/delete controls; editing flows back into wizard with populated inputs
+   - “Review” button is disabled on Step 5 until there’s at least one exercise
+   - Guardrails, hints, and graceful fallbacks (works on mobile/desktop)
+   -----------------------------------------------------------------------
+   Assumptions:
+   - index.html wires the elements with ids used below
+   - exercises.js defines a global array window.EXERCISES ([] if missing)
+   - Chart.js is included on the page
+   -----------------------------------------------------------------------
+   Notes:
+   - This file is intentionally verbose and heavily commented to be
+     self-contained and clear. Splitting into modules is recommended for
+     production but kept as a single file here as requested.
+   ======================================================================= */
 
-/* ---------- Crash guard: surface first JS error ---------- */
+/* ==============================
+   0) Crash Guard (Surface errors)
+   ============================== */
 window.addEventListener("error", (e) => {
-  console.error("Runtime error:", e.error || e.message);
+  // Helps when testing on mobile devices or embedded webviews
+  console.error("[Fatal JS Error]", e.error || e.message);
 });
 
-/* ---------- Constants & helpers ---------- */
+/* ==========================================
+   1) Constants, Helpers, and Normalization
+   ========================================== */
+
+/** Home-appropriate equipment filter list */
 const HOME_EQUIPMENT = ["body weight", "resistance bands", "kettlebell"];
 
+/** Allowed high-level categories we expose in the UI */
 const CATEGORY_WHITELIST = new Set([
-  "upper body", "lower body", "push", "pull", "hinge", "squat",
-  "full body", "core", "specific muscle"
+  "upper body",
+  "lower body",
+  "push",
+  "pull",
+  "hinge",
+  "squat",
+  "full body",
+  "core",
+  "specific muscle"
 ]);
 
-const uniq  = arr => [...new Set(arr)];
-const title = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+/** Unique and Title helpers */
+const uniq = (arr) => [...new Set(arr)];
+const title = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-/* Canonicalize category names (accepts synonyms) */
+/** Normalize category synonyms to canonical */
 function normalizeCategory(cat) {
   const c = String(cat || "").toLowerCase().trim();
   if (c === "upper") return "upper body";
@@ -31,49 +68,106 @@ function normalizeCategory(cat) {
   return c;
 }
 
-/* ---------- Load & normalize exercise data from exercises.js ---------- */
+/** Safe number parser */
+function toInt(v, fallback = 0) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+function toFloat(v, fallback = 0) {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Date helpers */
+function nowIsoMinute() {
+  // yyyy-MM-ddTHH:mm
+  return new Date().toISOString().slice(0, 16);
+}
+function isoToLocalString(iso) {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+/* ==========================================
+   2) Load & Normalize Exercise Library
+   ========================================== */
+
+/**
+ * We expect a global EXERCISES array from exercises.js, each item like:
+ * { name: "Romanian Deadlift", sections: [...], equipment: [...], muscles: [...] }
+ * This script tolerates its absence (empty list) for development.
+ */
 const RAW_EXERCISES = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
-const EXERCISES_NORM = RAW_EXERCISES.map(e => ({
+
+/** Normalize sections/equipment to lowercase; keep name/muscles */
+const EXERCISES_NORM = RAW_EXERCISES.map((e) => ({
   name: e.name,
-  sections: (e.sections || []).map(s => String(s).toLowerCase()),
-  equipment: (e.equipment || []).map(eq => String(eq).toLowerCase()),
+  sections: (e.sections || []).map((s) => String(s).toLowerCase()),
+  equipment: (e.equipment || []).map((eq) => String(eq).toLowerCase()),
   muscles: Array.isArray(e.muscles) ? e.muscles.slice() : []
 }));
 
+/** Derive all categories present (filtered to the whitelist) */
 function allCategories() {
   return uniq(
-    EXERCISES_NORM.flatMap(e => e.sections.filter(s => CATEGORY_WHITELIST.has(s)))
+    EXERCISES_NORM.flatMap((e) => e.sections.filter((s) => CATEGORY_WHITELIST.has(s)))
   ).sort();
 }
+
+/** Derive all muscles present in the dataset */
 function allMuscles() {
-  return uniq(EXERCISES_NORM.flatMap(e => e.muscles)).sort();
+  return uniq(EXERCISES_NORM.flatMap((e) => e.muscles)).sort();
 }
+
+/** Filter exercises by location (gym allows all, home restricts to certain equipment) */
 function byLocation(items, location) {
-  if (location === "home") return items.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.includes(eq)));
+  if (location === "home") {
+    return items.filter((e) => e.equipment.some((eq) => HOME_EQUIPMENT.includes(eq)));
+  }
+  // gym or not selected: allow everything
   return items;
 }
+
+/** Filter by category/muscle (for "specific muscle") */
 function byCategoryAndMuscle(items, category, muscle) {
   const cat = normalizeCategory(category);
   if (!cat) return [];
   if (cat === "specific muscle") {
     if (!muscle) return [];
-    return items.filter(e => e.sections.includes("specific muscle") && (e.muscles || []).includes(muscle));
+    return items.filter(
+      (e) => e.sections.includes("specific muscle") && (e.muscles || []).includes(muscle)
+    );
   }
-  return items.filter(e => e.sections.includes(cat));
+  return items.filter((e) => e.sections.includes(cat));
 }
 
-/* ---------- Global state ---------- */
-let currentStep = 1;
-let myChart;
+/* ==========================================
+   3) Global State (Wizard + Data)
+   ========================================== */
 
+/** Current step in the wizard, 1..6 */
+let currentStep = 1;
+
+/** Chart.js instance for history */
+let myChart = null;
+
+/** App data persisted in localStorage */
 let userWorkoutData = JSON.parse(localStorage.getItem("userWorkoutData")) || {};
+
+/** Exercises added during the current session (not yet saved) */
 let currentWorkoutExercises = [];
+
+/** If editing a saved record, keep a reference (used by edit flow) */
 let editingRecord = null;
 
+/** Wizard data captured across steps */
 const wizard = {
-  location: "",      // gym/home
-  timing: "",        // now/past
-  datetime: "",      // ISO yyyy-MM-ddTHH:mm
+  location: "", // gym/home
+  timing: "", // now/past
+  datetime: "", // ISO minute string
   category: "",
   muscle: "",
   equipment: "",
@@ -85,98 +179,156 @@ const wizard = {
   maxWeightSetCount: 0
 };
 
-/* ---------- DOM Ready: bind UI ---------- */
+/* ==========================================
+   4) DOM Ready — Wire everything
+   ========================================== */
 document.addEventListener("DOMContentLoaded", () => {
-  // Header buttons
+  // Logger/History navigation buttons (if present in your HTML)
   document.getElementById("to-history")?.addEventListener("click", showHistoryView);
   document.getElementById("to-logger")?.addEventListener("click", showLoggerView);
 
-  // Wizard nav (also exposed as inline fallbacks)
-  document.getElementById("next-btn")?.addEventListener("click", () => nextStep());
-  document.getElementById("prev-btn")?.addEventListener("click", () => prevStep());
+  // Wizard nav buttons
+  document.getElementById("next-btn")?.addEventListener("click", nextStep);
+  document.getElementById("prev-btn")?.addEventListener("click", prevStep);
 
-  // Step 6 actions
+  // Step-6 actions
   document.getElementById("edit-exercises-btn")?.addEventListener("click", () => goToStep(5));
   document.getElementById("save-session-btn")?.addEventListener("click", saveSession);
 
-  // Step 5 add exercise
+  // Step-5 action (add current exercise to session list)
   document.getElementById("add-exercise-btn")?.addEventListener("click", addExerciseToWorkout);
 
-  // Initialize steps
+  // History page selection (in case you wire without inline attribute)
+  const historySelect = document.getElementById("history-select");
+  if (historySelect) {
+    historySelect.addEventListener("change", displayExerciseHistory);
+  }
+
+  // Initialize Steps
   initStep1();
   initStep2();
   initStep3();
   initStep4();
   initStep5();
 
-  // Start
+  // Start at Step 1
   goToStep(1);
-  document.getElementById('history-details').style.display = "none";
+  updateReviewButtonState();
 });
 
-/* =========================================================
-   Step navigation
-========================================================= */
+/* ==========================================
+   5) Step Navigation (Next/Prev + UI)
+   ========================================== */
+
 function goToStep(step) {
   currentStep = step;
 
-  // Show only current step
+  // Show only the active step pane
   document.querySelectorAll(".wizard-step").forEach((el, idx) => {
-    el.style.display = (idx === step - 1) ? "block" : "none";
+    el.style.display = idx === step - 1 ? "block" : "none";
   });
 
-  // Step badges
-  document.querySelectorAll(".step-badge").forEach(b => {
+  // Style step badges if you have them in your HTML
+  document.querySelectorAll(".step-badge").forEach((b) => {
     b.classList.toggle("active", Number(b.dataset.step) === step);
   });
 
-  // Nav buttons
+  // Prev button disabled on step 1
   const prev = document.getElementById("prev-btn");
-  const next = document.getElementById("next-btn");
-  if (prev) prev.disabled = (step === 1);
-  if (next) next.textContent = (step === 6) ? "Save" : (step === 5 ? "Review" : "Next");
+  if (prev) prev.disabled = step === 1;
 
-  // Populate dependent dropdowns on entry
-  if (step === 4)      populateEquipment();
-  else if (step === 5) populateExercises();
-  else if (step === 6) buildSessionSummary();
+  // Populate dependent dropdowns when entering certain steps
+  if (step === 4) {
+    populateEquipment();
+  } else if (step === 5) {
+    populateExercises();
+  } else if (step === 6) {
+    buildSessionSummary();
+  }
+
+  updateReviewButtonState();
 }
 
 function prevStep() {
   if (currentStep > 1) goToStep(currentStep - 1);
 }
-function nextStep() {
-  if (!validateAndStore(currentStep)) return;
-  if (currentStep < 5) goToStep(currentStep + 1);
-  else if (currentStep === 5) goToStep(6);
-  else saveSession();
-}
-window.prevStep = prevStep; // inline fallback
-window.nextStep = nextStep; // inline fallback
 
-/* =========================================================
-   Step 1: Location
-========================================================= */
+function nextStep() {
+  // Steps 1-4 validate and move forward
+  if (currentStep < 5) {
+    if (!validateAndStore(currentStep)) return;
+    goToStep(currentStep + 1);
+    return;
+  }
+
+  // Step 5 -> Step 6 requires at least one exercise in list
+  if (currentStep === 5) {
+    if (currentWorkoutExercises.length === 0) {
+      // The button should be disabled already;
+      // this is an extra guard if it was triggered programmatically.
+      const s5Hint = document.getElementById("s5-hint");
+      if (s5Hint) s5Hint.textContent = "Please add at least one exercise before reviewing your session.";
+      return;
+    }
+    goToStep(6);
+    return;
+  }
+
+  // Step 6 -> Save
+  saveSession();
+}
+
+/** Controls "Next/Review/Save" button text and disabled state */
+function updateReviewButtonState() {
+  const next = document.getElementById("next-btn");
+  if (!next) return;
+
+  if (currentStep === 5) {
+    next.textContent = "Review";
+    const noItems = currentWorkoutExercises.length === 0;
+    next.disabled = noItems;
+    next.classList.toggle("is-disabled", noItems);
+  } else if (currentStep === 6) {
+    next.textContent = "Save";
+    next.disabled = false;
+    next.classList.remove("is-disabled");
+  } else {
+    next.textContent = "Next";
+    next.disabled = false;
+    next.classList.remove("is-disabled");
+  }
+}
+
+/* ==========================================
+   6) Step 1 — Location (Gym/Home)
+   ========================================== */
+
 function initStep1() {
   const sel = document.getElementById("workout-type-select");
   if (sel) sel.value = wizard.location || "";
 }
+
 function validateAndStoreStep1() {
   const hint = document.getElementById("s1-hint");
   const val = document.getElementById("workout-type-select").value;
-  if (!val) { if (hint) hint.textContent = "Please select where you are training."; return false; }
+  if (!val) {
+    if (hint) hint.textContent = "Please select where you are training.";
+    return false;
+  }
   if (hint) hint.textContent = "";
   wizard.location = val;
   return true;
 }
 
-/* =========================================================
-   Step 2: Timing
-========================================================= */
+/* ==========================================
+   7) Step 2 — Timing (Now/Past) + Datetime
+   ========================================== */
+
 function initStep2() {
   const timingRadios = document.querySelectorAll('input[name="timing"]');
-  timingRadios.forEach(r => r.addEventListener("change", onTimingChange));
+  timingRadios.forEach((r) => r.addEventListener("change", onTimingChange));
 
+  // Default to "now"
   if (!wizard.timing) {
     const nowRadio = document.querySelector('input[name="timing"][value="now"]');
     if (nowRadio) nowRadio.checked = true;
@@ -188,6 +340,7 @@ function initStep2() {
     if (wizard.timing === "now") setDateToNow(true);
   }
 }
+
 function onTimingChange(e) {
   wizard.timing = e.target.value;
   if (wizard.timing === "now") {
@@ -195,45 +348,64 @@ function onTimingChange(e) {
   } else {
     const dt = document.getElementById("workout-datetime");
     dt.removeAttribute("disabled");
-    document.getElementById("date-hint").textContent = "Pick the date/time for your past session.";
+    const hint = document.getElementById("date-hint");
+    if (hint) hint.textContent = "Pick the date/time for your past session.";
   }
 }
-function setDateToNow(write) {
+
+function setDateToNow(writeValue) {
   const dt = document.getElementById("workout-datetime");
-  const nowIso = new Date().toISOString().slice(0, 16);
-  if (write) dt.value = nowIso;
+  const now = nowIsoMinute();
+  if (writeValue) dt.value = now;
   dt.setAttribute("disabled", "disabled");
-  document.getElementById("date-hint").textContent = "Date/time is locked to now.";
+  const hint = document.getElementById("date-hint");
+  if (hint) hint.textContent = "Date/time is locked to now.";
 }
+
 function validateAndStoreStep2() {
   const hint = document.getElementById("s2-hint");
   const dt = document.getElementById("workout-datetime").value;
-  if (!wizard.timing) { if (hint) hint.textContent = "Select session timing."; return false; }
-  if (wizard.timing === "past" && !dt) { if (hint) hint.textContent = "Choose a date/time for your past session."; return false; }
-  wizard.datetime = (wizard.timing === "now") ? new Date().toISOString().slice(0, 16) : dt;
+  if (!wizard.timing) {
+    if (hint) hint.textContent = "Select session timing.";
+    return false;
+  }
+  if (wizard.timing === "past" && !dt) {
+    if (hint) hint.textContent = "Choose a date/time for your past session.";
+    return false;
+  }
+  wizard.datetime = wizard.timing === "now" ? nowIsoMinute() : dt;
   if (hint) hint.textContent = "";
   return true;
 }
 
-/* =========================================================
-   Step 3: Category (+ Specific Muscle)
-========================================================= */
+/* ==========================================
+   8) Step 3 — Category (+ Specific Muscle)
+   ========================================== */
+
 function initStep3() {
+  // Category options
   const workOnSelect = document.getElementById("work-on-select");
   const cats = allCategories();
-  workOnSelect.innerHTML = `<option value="">--Select--</option>` + cats.map(c => `<option value="${c}">${title(c)}</option>`).join('');
+  workOnSelect.innerHTML =
+    `<option value="">--Select--</option>` + cats.map((c) => `<option value="${c}">${title(c)}</option>`).join("");
   workOnSelect.value = wizard.category || "";
 
+  // Muscle options
   const musclesSelect = document.getElementById("muscle-select");
   const muscles = allMuscles();
-  musclesSelect.innerHTML = `<option value="">--Select--</option>` + muscles.map(m => `<option value="${m}">${m}</option>`).join('');
+  musclesSelect.innerHTML =
+    `<option value="">--Select--</option>` + muscles.map((m) => `<option value="${m}">${m}</option>`).join("");
   musclesSelect.value = wizard.muscle || "";
 
+  // Change handlers
   workOnSelect.addEventListener("change", () => {
     const cat = normalizeCategory(workOnSelect.value);
     wizard.category = cat;
-    wizard.equipment = ""; // reset downstream
-    wizard.exercise  = "";
+
+    // Reset downstream choices when category changes
+    wizard.equipment = "";
+    wizard.exercise = "";
+
     const muscleGroup = document.getElementById("muscle-select-group");
     if (cat === "specific muscle") {
       muscleGroup.style.display = "block";
@@ -248,105 +420,138 @@ function initStep3() {
     wizard.muscle = musclesSelect.value;
   });
 }
+
 function validateAndStoreStep3() {
   const hint = document.getElementById("s3-hint");
   const raw = document.getElementById("work-on-select").value;
-  if (!raw) { if (hint) hint.textContent = "Please select what you're training."; return false; }
+  if (!raw) {
+    if (hint) hint.textContent = "Please select what you're training.";
+    return false;
+  }
 
   const cat = normalizeCategory(raw);
   wizard.category = cat;
 
   if (cat === "specific muscle") {
     const mus = document.getElementById("muscle-select").value;
-    if (!mus) { if (hint) hint.textContent = "Please choose a specific muscle."; return false; }
+    if (!mus) {
+      if (hint) hint.textContent = "Please choose a specific muscle.";
+      return false;
+    }
     wizard.muscle = mus;
   }
+
   if (hint) hint.textContent = "";
   return true;
 }
 
-/* =========================================================
-   Step 4: Equipment
-========================================================= */
-function initStep4() { /* populated on step entry via goToStep */ }
+/* ==========================================
+   9) Step 4 — Equipment
+   ========================================== */
+
+function initStep4() {
+  // Populated on step entry via goToStep(4) -> populateEquipment()
+}
+
 function populateEquipment() {
   const equipmentSelect = document.getElementById("equipment-select");
   equipmentSelect.innerHTML = `<option value="">--Select--</option>`;
 
   const pool = byLocation(EXERCISES_NORM, wizard.location);
   const filtered = byCategoryAndMuscle(pool, wizard.category, wizard.muscle);
-  const eqs = uniq(filtered.flatMap(e => e.equipment));
+  const eqs = uniq(filtered.flatMap((e) => e.equipment));
 
-  equipmentSelect.innerHTML += eqs.map(eq => `<option value="${eq}">${title(eq)}</option>`).join('');
+  equipmentSelect.innerHTML += eqs.map((eq) => `<option value="${eq}">${title(eq)}</option>`).join("");
+
+  // Keep previously chosen value if still valid
   if (eqs.includes(wizard.equipment)) equipmentSelect.value = wizard.equipment;
 
-  equipmentSelect.onchange = () => { wizard.equipment = equipmentSelect.value; populateExercises(); };
+  equipmentSelect.onchange = () => {
+    wizard.equipment = equipmentSelect.value;
+    populateExercises(); // Preload step-5 exercise dropdown
+  };
 }
+
 function validateAndStoreStep4() {
   const hint = document.getElementById("s4-hint");
   const val = document.getElementById("equipment-select").value;
-  if (!val) { if (hint) hint.textContent = "Please select the machine/equipment."; return false; }
+  if (!val) {
+    if (hint) hint.textContent = "Please select the machine/equipment.";
+    return false;
+  }
   wizard.equipment = val;
   if (hint) hint.textContent = "";
   return true;
 }
 
-/* =========================================================
-   Step 5: Exercise + Sets
-========================================================= */
+/* ==========================================
+   10) Step 5 — Exercise + Sets
+   ========================================== */
+
 function initStep5() {
-  // exercise list is repopulated when entering this step
+  // Exercise dropdown is populated when entering step 5
   const setsInput = document.getElementById("sets-input");
   setsInput.value = wizard.sets;
   setsInput.addEventListener("change", () => {
-    wizard.sets = Math.max(1, parseInt(setsInput.value || "1", 10));
+    wizard.sets = Math.max(1, toInt(setsInput.value, 1));
     renderSetRows(wizard.sets);
   });
-  renderSetRows(wizard.sets);
 
-  // Add exercise button bound in DOMContentLoaded
+  renderSetRows(wizard.sets);
 }
+
 function populateExercises() {
   const exerciseSelect = document.getElementById("exercise-select");
   exerciseSelect.innerHTML = `<option value="">--Select--</option>`;
 
   const pool = byLocation(EXERCISES_NORM, wizard.location);
-  const filtered = byCategoryAndMuscle(pool, wizard.category, wizard.muscle)
-    .filter(e => wizard.equipment ? e.equipment.includes(wizard.equipment) : true);
+  const filtered = byCategoryAndMuscle(pool, wizard.category, wizard.muscle).filter((e) =>
+    wizard.equipment ? e.equipment.includes(wizard.equipment) : true
+  );
 
-  const names = uniq(filtered.map(e => e.name)).sort();
-  exerciseSelect.innerHTML += names.map(n => `<option value="${n}">${n}</option>`).join('');
+  const names = uniq(filtered.map((e) => e.name)).sort();
+  exerciseSelect.innerHTML += names.map((n) => `<option value="${n}">${n}</option>`).join("");
+
+  // Keep previously selected exercise if still applicable
   if (names.includes(wizard.exercise)) exerciseSelect.value = wizard.exercise;
 
-  exerciseSelect.onchange = () => { wizard.exercise = exerciseSelect.value; };
+  exerciseSelect.onchange = () => {
+    wizard.exercise = exerciseSelect.value;
+  };
 }
+
 function renderSetRows(n) {
   const grid = document.getElementById("sets-grid");
   grid.innerHTML = "";
+
   for (let i = 1; i <= n; i++) {
     const row = document.createElement("div");
     row.className = "set-row";
     row.innerHTML = `
-      <input type="number" min="1" placeholder="Set ${i}: Reps" data-kind="reps" data-idx="${i-1}">
-      <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)" data-kind="weight" data-idx="${i-1}">
+      <input type="number" min="1" placeholder="Set ${i}: Reps" data-kind="reps" data-idx="${i - 1}">
+      <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)" data-kind="weight" data-idx="${i - 1}">
     `;
     grid.appendChild(row);
   }
 }
+
 function validateAndStoreStep5() {
   const hint = document.getElementById("s5-hint");
   const exercise = document.getElementById("exercise-select").value;
-  if (!exercise) { if (hint) hint.textContent = "Choose an exercise."; return false; }
+  if (!exercise) {
+    if (hint) hint.textContent = "Choose an exercise.";
+    return false;
+  }
   wizard.exercise = exercise;
 
-  const n = Math.max(1, parseInt(document.getElementById("sets-input").value || "1", 10));
+  const n = Math.max(1, toInt(document.getElementById("sets-input").value, 1));
   wizard.sets = n;
 
-  const repsInputs   = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
+  const repsInputs = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
   const weightInputs = [...document.querySelectorAll('#sets-grid input[data-kind="weight"]')];
 
-  const setReps    = repsInputs.map(i => parseInt(i.value, 10)).filter(v => !Number.isNaN(v) && v > 0);
-  const setWeights = weightInputs.map(i => parseFloat(i.value)).filter(v => !Number.isNaN(v) && v >= 0);
+  const setReps = repsInputs.map((i) => toInt(i.value)).filter((v) => v > 0);
+  const setWeights = weightInputs.map((i) => toFloat(i.value)).filter((v) => v >= 0);
 
   if (setReps.length !== n || setWeights.length !== n) {
     if (hint) hint.textContent = "Fill reps and weight for every set.";
@@ -356,8 +561,9 @@ function validateAndStoreStep5() {
   wizard.setReps = setReps;
   wizard.setWeights = setWeights;
 
+  // Derive heaviest weight and how many sets at that weight
   const maxW = Math.max(...setWeights);
-  const maxCount = setWeights.filter(w => w === maxW).length;
+  const maxCount = setWeights.filter((w) => w === maxW).length;
   wizard.maxWeight = maxW;
   wizard.maxWeightSetCount = maxCount;
 
@@ -365,28 +571,16 @@ function validateAndStoreStep5() {
   return true;
 }
 
-/* Wrapper to validate per-step */
-function validateAndStore(step) {
-  switch (step) {
-    case 1: return validateAndStoreStep1();
-    case 2: return validateAndStoreStep2();
-    case 3: return validateAndStoreStep3();
-    case 4: return validateAndStoreStep4();
-    case 5: return validateAndStoreStep5();
-    case 6: return true;
-    default: return true;
-  }
-}
+/* ==========================================
+   11) Current Session List (Step 5)
+   ========================================== */
 
-/* =========================================================
-   Current session (Step 5 list)
-========================================================= */
 function addExerciseToWorkout() {
   if (!validateAndStoreStep5()) return;
 
   const newExercise = {
     id: Date.now().toString(),
-    date: wizard.datetime,
+    date: wizard.datetime, // captured in step 2
     name: wizard.exercise,
     category: wizard.category,
     equipment: wizard.equipment,
@@ -401,12 +595,14 @@ function addExerciseToWorkout() {
   currentWorkoutExercises.push(newExercise);
   renderCurrentWorkoutList();
 
-  // Reset step-5 inputs for quick subsequent adds
+  // Reset inline form for quick adding of the next exercise
   document.getElementById("exercise-select").value = "";
   document.getElementById("sets-input").value = "3";
   wizard.exercise = "";
   wizard.sets = 3;
   renderSetRows(3);
+
+  updateReviewButtonState();
 }
 
 function renderCurrentWorkoutList() {
@@ -434,30 +630,35 @@ function renderCurrentWorkoutList() {
     listContainer.style.display = "none";
   }
 }
+
 function removeExerciseFromWorkout(index) {
   currentWorkoutExercises.splice(index, 1);
   renderCurrentWorkoutList();
+  updateReviewButtonState();
 }
 
-/* =========================================================
-   Step 6: Session Summary + Save
-========================================================= */
+/* ==========================================
+   12) Step 6 — Summary (Review) + Save
+   ========================================== */
+
 function buildSessionSummary() {
-  const meta   = document.getElementById("summary-meta");
+  const meta = document.getElementById("summary-meta");
   const exWrap = document.getElementById("summary-exercises");
   const totals = document.getElementById("summary-totals");
 
+  // Summary metadata
   meta.innerHTML = `
     <div class="summary-row"><strong>Location</strong><span>${title(wizard.location)}</span></div>
     <div class="summary-row"><strong>When</strong><span>${wizard.timing === "now" ? "Training now" : "Recorded session"}</span></div>
-    <div class="summary-row"><strong>Date & Time</strong><span>${new Date(wizard.datetime).toLocaleString()}</span></div>
+    <div class="summary-row"><strong>Date & Time</strong><span>${isoToLocalString(wizard.datetime)}</span></div>
   `;
 
+  // Exercises summary
   exWrap.innerHTML = "";
   if (currentWorkoutExercises.length === 0) {
     exWrap.innerHTML = `<div class="summary-exercise"><em>No exercises added yet. Go back and add some.</em></div>`;
   } else {
-    currentWorkoutExercises.forEach(ex => {
+    currentWorkoutExercises.forEach((ex) => {
       const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
       const metaLine = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""}`;
       const card = document.createElement("div");
@@ -471,13 +672,16 @@ function buildSessionSummary() {
     });
   }
 
+  // Totals (volume estimate etc.)
   let totalVolume = 0;
   let totalSets = 0;
   let totalExercises = currentWorkoutExercises.length;
 
-  currentWorkoutExercises.forEach(ex => {
+  currentWorkoutExercises.forEach((ex) => {
     totalSets += ex.sets;
-    ex.setReps.forEach((r, i) => { totalVolume += r * ex.setWeights[i]; });
+    ex.setReps.forEach((r, i) => {
+      totalVolume += r * ex.setWeights[i];
+    });
   });
 
   totals.innerHTML = `
@@ -489,14 +693,21 @@ function buildSessionSummary() {
 
 function saveSession() {
   const dt = wizard.datetime;
-  if (!dt) { alert("Missing session date/time — go back to Step 2."); return; }
-  if (currentWorkoutExercises.length === 0) { alert("Add at least one exercise."); return; }
+  if (!dt) {
+    alert("Missing session date/time — go back to Step 2.");
+    return;
+  }
+  if (currentWorkoutExercises.length === 0) {
+    alert("Add at least one exercise before saving.");
+    return;
+  }
 
-  currentWorkoutExercises.forEach(ex => {
+  // Persist each exercise as its own record under its name
+  currentWorkoutExercises.forEach((ex) => {
     if (!userWorkoutData[ex.name]) userWorkoutData[ex.name] = { bestWeight: 0, records: [] };
     userWorkoutData[ex.name].records.push({
       id: ex.id,
-      date: ex.date,
+      date: dt,
       category: ex.category,
       equipment: ex.equipment,
       muscle: ex.muscle,
@@ -514,57 +725,93 @@ function saveSession() {
   localStorage.setItem("userWorkoutData", JSON.stringify(userWorkoutData));
   alert("Workout session saved successfully!");
 
-  // Reset for next session
+  // Reset session
   currentWorkoutExercises = [];
   renderCurrentWorkoutList();
 
+  // Reset wizard for next time
   Object.assign(wizard, {
-    location: "", timing: "now", datetime: new Date().toISOString().slice(0,16),
-    category: "", muscle: "", equipment: "", exercise: "",
-    sets: 3, setReps: [], setWeights: [], maxWeight: 0, maxWeightSetCount: 0
+    location: "",
+    timing: "now",
+    datetime: nowIsoMinute(),
+    category: "",
+    muscle: "",
+    equipment: "",
+    exercise: "",
+    sets: 3,
+    setReps: [],
+    setWeights: [],
+    maxWeight: 0,
+    maxWeightSetCount: 0
   });
 
   // UI reset
-  document.getElementById("workout-type-select").value = "";
-  document.querySelector('input[name="timing"][value="now"]').checked = true;
-  setDateToNow(true);
-  document.getElementById("work-on-select").value = "";
-  document.getElementById("muscle-select").value = "";
-  document.getElementById("muscle-select-group").style.display = "none";
-  populateEquipment();
-  populateExercises();
-  document.getElementById("sets-input").value = "3";
+  const typeSel = document.getElementById("workout-type-select");
+  if (typeSel) typeSel.value = "";
+
+  const nowRadio = document.querySelector('input[name="timing"][value="now"]');
+  if (nowRadio) nowRadio.checked = true;
+
+  const dtInput = document.getElementById("workout-datetime");
+  if (dtInput) {
+    dtInput.setAttribute("disabled", "disabled");
+    dtInput.value = wizard.datetime;
+  }
+
+  const workOnSelect = document.getElementById("work-on-select");
+  if (workOnSelect) workOnSelect.value = "";
+
+  const muscleSelect = document.getElementById("muscle-select");
+  if (muscleSelect) muscleSelect.value = "";
+
+  const muscleGroup = document.getElementById("muscle-select-group");
+  if (muscleGroup) muscleGroup.style.display = "none";
+
+  const equipSel = document.getElementById("equipment-select");
+  if (equipSel) equipSel.innerHTML = `<option value="">--Select--</option>`;
+
+  const exSel = document.getElementById("exercise-select");
+  if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+
+  const setsInput = document.getElementById("sets-input");
+  if (setsInput) setsInput.value = "3";
+
   renderSetRows(3);
   goToStep(1);
 }
 
-/* =========================================================
-   History view + Chart.js
-========================================================= */
+/* ==========================================
+   13) History View + Chart.js
+   ========================================== */
+
 function showHistoryView() {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.getElementById("workout-history").classList.add("active");
   populateHistoryDropdown();
 }
+
 function showLoggerView() {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.getElementById("workout-logger").classList.add("active");
   goToStep(1);
+  updateReviewButtonState();
 }
 
 function populateHistoryDropdown() {
   const historySelect = document.getElementById("history-select");
   const recordedExercises = Object.keys(userWorkoutData);
-  historySelect.innerHTML = `<option value="">--Select an Exercise--</option>` +
-    recordedExercises.map(ex => `<option value="${ex}">${ex}</option>`).join('');
+  historySelect.innerHTML =
+    `<option value="">--Select an Exercise--</option>` +
+    recordedExercises.map((ex) => `<option value="${ex}">${ex}</option>`).join("");
+
   document.getElementById("history-details").style.display = "none";
 }
 
 function displayExerciseHistory() {
   const selectedExercise = document.getElementById("history-select").value;
-  const historyDetails   = document.getElementById("history-details");
-  const bestWeightTitle  = document.getElementById("best-weight-title");
-  const historyLog       = document.getElementById("history-log");
+  const historyDetails = document.getElementById("history-details");
+  const bestWeightTitle = document.getElementById("best-weight-title");
+  const historyLog = document.getElementById("history-log");
 
   if (!selectedExercise) {
     historyDetails.style.display = "none";
@@ -574,135 +821,236 @@ function displayExerciseHistory() {
   historyDetails.style.display = "block";
   const history = userWorkoutData[selectedExercise];
 
+  // Best weight
   bestWeightTitle.textContent = `Best Weight: ${history.bestWeight}kg`;
 
-  historyLog.innerHTML = "";
+  // Sort records by date ASC for chart
   const sortedRecords = history.records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  const dates = sortedRecords.map((r) => new Date(r.date).toLocaleDateString());
+  const maxWeights = sortedRecords.map((r) => r.maxWeight);
 
-  const dates      = sortedRecords.map(r => new Date(r.date).toLocaleDateString());
-  const maxWeights = sortedRecords.map(r => r.maxWeight);
-
+  // Build/refresh chart
   if (myChart) myChart.destroy();
-  const ctx = document.getElementById('history-chart').getContext('2d');
+  const ctx = document.getElementById("history-chart").getContext("2d");
   myChart = new Chart(ctx, {
-    type: 'line',
+    type: "line",
     data: {
       labels: dates,
-      datasets: [{
-        label: 'Heaviest Lift (kg)',
-        data: maxWeights,
-        borderColor: 'orange',
-        backgroundColor: 'rgba(255, 165, 0, 0.2)',
-        fill: true,
-        tension: 0.1
-      }]
+      datasets: [
+        {
+          label: "Heaviest Lift (kg)",
+          data: maxWeights,
+          borderColor: "orange",
+          backgroundColor: "rgba(255, 165, 0, 0.2)",
+          fill: true,
+          tension: 0.1
+        }
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        x: { title: { display: true, text: 'Date', color: 'white' }, ticks: { color: 'white' } },
-        y: { title: { display: true, text: 'Weight (kg)', color: 'white' }, ticks: { color: 'white' } }
+        x: { title: { display: true, text: "Date", color: "white" }, ticks: { color: "white" } },
+        y: { title: { display: true, text: "Weight (kg)", color: "white" }, ticks: { color: "white" } }
       },
-      plugins: { legend: { labels: { color: 'white' } } }
+      plugins: { legend: { labels: { color: "white" } } }
     }
   });
 
-  sortedRecords.forEach(record => {
-    const listItem   = document.createElement("li");
+  // Log entries
+  historyLog.innerHTML = "";
+  sortedRecords.forEach((record) => {
     const dateString = new Date(record.date).toLocaleString();
-    const pairs      = record.setReps.map((r, i) => `${r}x${record.setWeights[i]}kg`).join(", ");
-    const meta       = `${title(record.category)} • ${title(record.equipment)}${record.muscle ? ` • ${record.muscle}` : ""}`;
+    const pairs = record.setReps
+      ? record.setReps.map((r, i) => `${r}x${record.setWeights[i]}kg`).join(", ")
+      : `Reps: ${record.reps} | Weights: ${record.setWeights.join(", ")}kg`;
 
-    listItem.innerHTML = `
+    const meta = `${title(record.category || "n/a")} • ${title(record.equipment || "n/a")}${
+      record.muscle ? ` • ${record.muscle}` : ""
+    }`;
+
+    const li = document.createElement("li");
+    li.innerHTML = `
       <span>
         <strong>${selectedExercise}</strong> <small>(${meta})</small><br>
         Date: ${dateString} | Sets: ${record.sets} | ${pairs}<br>
-        Heaviest: ${record.maxWeight}kg for ${record.maxWeightSetCount} set(s)
+        Heaviest: ${record.maxWeight}kg${record.maxWeightSetCount ? ` for ${record.maxWeightSetCount} set(s)` : ""}
       </span>
       <div class="history-actions">
         <button class="edit-btn" onclick="editRecord('${selectedExercise}', '${record.id}')">Edit</button>
         <button class="delete-btn" onclick="deleteRecord('${selectedExercise}', '${record.id}')">Delete</button>
       </div>
     `;
-    historyLog.appendChild(listItem);
+    historyLog.appendChild(li);
   });
 }
 
 function deleteRecord(exerciseName, recordId) {
-  if (confirm("Are you sure you want to delete this record?")) {
-    const history = userWorkoutData[exerciseName];
-    history.records = history.records.filter(record => record.id !== recordId);
+  if (!confirm("Are you sure you want to delete this record?")) return;
 
-    if (history.records.length === 0) {
-      delete userWorkoutData[exerciseName];
-    } else {
-      const newMax = Math.max(...history.records.map(r => r.maxWeight));
-      history.bestWeight = isFinite(newMax) ? newMax : 0;
-    }
+  const history = userWorkoutData[exerciseName];
+  history.records = history.records.filter((r) => r.id !== recordId);
 
-    localStorage.setItem("userWorkoutData", JSON.stringify(userWorkoutData));
-    populateHistoryDropdown();
+  if (history.records.length === 0) {
+    delete userWorkoutData[exerciseName];
+  } else {
+    const newMax = Math.max(...history.records.map((r) => r.maxWeight));
+    history.bestWeight = Number.isFinite(newMax) ? newMax : 0;
+  }
+
+  localStorage.setItem("userWorkoutData", JSON.stringify(userWorkoutData));
+  populateHistoryDropdown();
+
+  // Keep selection
+  const historySelect = document.getElementById("history-select");
+  if (historySelect && exerciseName in userWorkoutData) {
+    historySelect.value = exerciseName;
     displayExerciseHistory();
+  } else {
+    document.getElementById("history-details").style.display = "none";
   }
 }
 
 function editRecord(exerciseName, recordId) {
   const history = userWorkoutData[exerciseName];
-  const record = history.records.find(r => r.id === recordId);
+  const record = history.records.find((r) => r.id === recordId);
   if (!record) return;
 
-  wizard.location  = HOME_EQUIPMENT.includes(record.equipment) ? "home" : "gym";
-  wizard.timing    = "past";
-  wizard.datetime  = record.date;
-  wizard.category  = record.category;
-  wizard.muscle    = record.muscle || "";
-  wizard.equipment = record.equipment;
-  wizard.exercise  = exerciseName;
-  wizard.sets      = record.sets;
-  wizard.setReps   = record.setReps.slice();
-  wizard.setWeights = record.setWeights.slice();
+  // Set wizard state from record
+  wizard.location = HOME_EQUIPMENT.includes(record.equipment) ? "home" : "gym";
+  wizard.timing = "past";
+  wizard.datetime = record.date;
+  wizard.category = record.category || "";
+  wizard.muscle = record.muscle || "";
+  wizard.equipment = record.equipment || "";
+  wizard.exercise = exerciseName;
+  wizard.sets = record.sets || (record.setWeights ? record.setWeights.length : 3);
+  wizard.setReps = record.setReps ? record.setReps.slice() : Array(wizard.sets).fill(record.reps || 10);
+  wizard.setWeights = record.setWeights ? record.setWeights.slice() : Array(wizard.sets).fill(0);
 
+  const maxW = Math.max(...wizard.setWeights);
+  wizard.maxWeight = Number.isFinite(maxW) ? maxW : 0;
+  wizard.maxWeightSetCount = wizard.setWeights.filter((w) => w === wizard.maxWeight).length;
+
+  editingRecord = record;
+
+  // Switch to logger and populate UI
   showLoggerView();
 
   // Step 1
-  document.getElementById("workout-type-select").value = wizard.location;
+  const typeSel = document.getElementById("workout-type-select");
+  if (typeSel) typeSel.value = wizard.location;
+
   // Step 2
   const pastRadio = document.querySelector('input[name="timing"][value="past"]');
   if (pastRadio) pastRadio.checked = true;
   const dt = document.getElementById("workout-datetime");
-  dt.removeAttribute("disabled");
-  dt.value = wizard.datetime;
+  if (dt) {
+    dt.removeAttribute("disabled");
+    dt.value = wizard.datetime;
+  }
 
   // Step 3
   const catSel = document.getElementById("work-on-select");
-  catSel.value = wizard.category;
+  if (catSel) catSel.value = wizard.category;
+
   const muscleGroup = document.getElementById("muscle-select-group");
+  const muscleSel = document.getElementById("muscle-select");
   if (wizard.category === "specific muscle") {
-    muscleGroup.style.display = "block";
-    document.getElementById("muscle-select").value = wizard.muscle;
+    if (muscleGroup) muscleGroup.style.display = "block";
+    if (muscleSel) muscleSel.value = wizard.muscle;
   } else {
-    muscleGroup.style.display = "none";
+    if (muscleGroup) muscleGroup.style.display = "none";
   }
 
   // Step 4
   populateEquipment();
-  document.getElementById("equipment-select").value = wizard.equipment;
+  const equipSel = document.getElementById("equipment-select");
+  if (equipSel) equipSel.value = wizard.equipment;
 
   // Step 5
   populateExercises();
-  document.getElementById("exercise-select").value = wizard.exercise;
-  document.getElementById("sets-input").value = wizard.sets;
+  const exSel = document.getElementById("exercise-select");
+  if (exSel) exSel.value = wizard.exercise;
+
+  const setsInput = document.getElementById("sets-input");
+  if (setsInput) setsInput.value = wizard.sets;
+
   renderSetRows(wizard.sets);
-  [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setReps[i] ?? "");
-  [...document.querySelectorAll('#sets-grid input[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeights[i] ?? "");
+  const repInputs = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
+  const wtInputs = [...document.querySelectorAll('#sets-grid input[data-kind="weight"]')];
+  repInputs.forEach((el, i) => (el.value = wizard.setReps[i] ?? ""));
+  wtInputs.forEach((el, i) => (el.value = wizard.setWeights[i] ?? ""));
 
-  editingRecord = record;
-  document.getElementById("edit-mode-message").style.display = "block";
+  // Seed the currentWorkoutExercises with the record being edited (replace/add)
+  currentWorkoutExercises = [
+    {
+      id: record.id,
+      date: wizard.datetime,
+      name: wizard.exercise,
+      category: wizard.category,
+      equipment: wizard.equipment,
+      muscle: wizard.muscle || null,
+      sets: wizard.sets,
+      setReps: wizard.setReps.slice(),
+      setWeights: wizard.setWeights.slice(),
+      maxWeight: wizard.maxWeight,
+      maxWeightSetCount: wizard.maxWeightSetCount
+    }
+  ];
+  renderCurrentWorkoutList();
+  updateReviewButtonState();
 
+  // Jump to step 5 for edits
   goToStep(5);
+
+  // Show "edit mode" indicator if you have it in the HTML
+  const editMsg = document.getElementById("edit-mode-message");
+  if (editMsg) editMsg.style.display = "block";
 }
 
-/* Expose a couple for console / inline fallback */
+/* ==========================================
+   14) Validation Dispatcher
+   ========================================== */
+
+function validateAndStore(step) {
+  switch (step) {
+    case 1:
+      return validateAndStoreStep1();
+    case 2:
+      return validateAndStoreStep2();
+    case 3:
+      return validateAndStoreStep3();
+    case 4:
+      return validateAndStoreStep4();
+    case 5:
+      return validateAndStoreStep5();
+    default:
+      return true;
+  }
+}
+
+/* ==========================================
+   15) Optional: Utilities for Debug
+   ========================================== */
+
+// Debug helper: wipe all saved data (use from console)
+window._wipeAllWorkoutData = function () {
+  if (confirm("Delete ALL saved workout history? This cannot be undone.")) {
+    userWorkoutData = {};
+    localStorage.removeItem("userWorkoutData");
+    currentWorkoutExercises = [];
+    renderCurrentWorkoutList();
+    populateHistoryDropdown();
+    alert("All saved workout history cleared.");
+  }
+};
+
+// Expose view switches and some functions in console/window (handy for testing)
 window.showHistoryView = showHistoryView;
-window.showLoggerView  = showLoggerView;
+window.showLoggerView = showLoggerView;
+window.addExerciseToWorkout = addExerciseToWorkout;
+window.removeExerciseFromWorkout = removeExerciseFromWorkout;
+window.editRecord = editRecord;
+window.deleteRecord = deleteRecord;
