@@ -69,7 +69,13 @@ window.EXERCISES = [
     equipment: ["machine", "barbell"],
     muscles: ["Quads", "Glute Max"]
   },
-
+  {
+    name: "Reverse Lunges",
+    sections: ["squat", "lower body", "full body"],
+    equipment: ["machine", "barbell", "dumbbell", "bodyweight", "kettlebell", "resistance bands"],
+    muscles: ["Quads", "Glute Max"]
+  },
+  
   // PUSH
   {
     name: "Bench Press",
