@@ -1,6 +1,8 @@
 /* =======================================================================
-   Workout Session Logger — script.js (FULL, with Last/Best + Trend +
-   page/step persistence when switching between Logger and History)
+   Workout Session Logger — script.js (FULL, with:
+   - Last/Best insights + trend vs last
+   - Page/step persistence between Logger/History
+   - Unilateral/Bilateral + Side selection for exercises
 ======================================================================= */
 
 /* ---- Crash guard ---- */
@@ -60,6 +62,8 @@ let editingRecord = null;
 const wizard = {
   location: "", timing: "", datetime: "",
   category: "", muscle: "", equipment: "", exercise: "",
+  movementType: "bilateral", // NEW: 'bilateral' | 'unilateral'
+  side: "",                  // NEW: if unilateral
   sets: 3, setReps: [], setWeights: [],
   maxWeight: 0, maxWeightSetCount: 0
 };
@@ -71,15 +75,11 @@ const pageScroll = { logger: 0, history: 0 };
 /* ======================================================================
    History helpers (last / best) + trend
 ====================================================================== */
-
-/** Return all records for an exercise, newest first */
 function getExerciseRecordsDesc(exName) {
   const recs = (userWorkoutData[exName]?.records || []).slice();
   recs.sort((a, b) => new Date(b.date) - new Date(a.date));
   return recs;
 }
-
-/** Get last session’s heaviest set weight and its reps */
 function getLastHeaviestWithReps(exName) {
   const recs = getExerciseRecordsDesc(exName);
   if (recs.length === 0) return null;
@@ -95,8 +95,6 @@ function getLastHeaviestWithReps(exName) {
 
   return { maxWeight: maxW, reps: repsAtMax, date: r.date };
 }
-
-/** Get all-time heaviest weight and reps (from the set where it occurred) */
 function getBestHeaviestWithReps(exName) {
   const bestW = userWorkoutData[exName]?.bestWeight ?? null;
   if (bestW == null) return null;
@@ -112,8 +110,6 @@ function getBestHeaviestWithReps(exName) {
   }
   return { maxWeight: bestW, reps: null, date: null };
 }
-
-/** Compare a current entry’s max to the last recorded for that exercise */
 function getTrendAgainstLast(exName, currentMax) {
   const last = getLastHeaviestWithReps(exName);
   if (!last || last.maxWeight == null) return { dir: "na", delta: null };
@@ -166,11 +162,7 @@ function goToStep(step) {
 
   updateReviewButtonState();
 }
-
-function prevStep() {
-  if (currentStep > 1) goToStep(currentStep - 1);
-}
-
+function prevStep() { if (currentStep > 1) goToStep(currentStep - 1); }
 function nextStep() {
   if (currentStep < 5) {
     if (!validateAndStore(currentStep)) return;
@@ -188,7 +180,6 @@ function nextStep() {
   }
   saveSession();
 }
-
 function updateReviewButtonState() {
   const next = document.getElementById("next-btn");
   if (!next) return;
@@ -322,7 +313,7 @@ function validateAndStoreStep4() {
 }
 
 /* ======================================================================
-   Step 5 — Exercise + sets (with insights)
+   Step 5 — Exercise + sets (with insights + unilateral/bilateral)
 ====================================================================== */
 function initStep5() {
   const setsInput = document.getElementById("sets-input");
@@ -330,6 +321,8 @@ function initStep5() {
   setsInput.addEventListener("change", () => { wizard.sets = Math.max(1, toInt(setsInput.value, 1)); renderSetRows(wizard.sets); });
   renderSetRows(wizard.sets);
 }
+
+/* ----- dynamic info & controls under exercise select ----- */
 function ensureInsightsNode() {
   let node = document.getElementById("exercise-insights");
   if (!node) {
@@ -342,6 +335,74 @@ function ensureInsightsNode() {
   }
   return node;
 }
+function ensureMovementControls() {
+  // Wrapper below insights
+  let wrap = document.getElementById("movement-controls");
+  const insights = ensureInsightsNode();
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "movement-controls";
+    wrap.style.margin = "10px 0";
+    wrap.innerHTML = `
+      <div class="form-group" id="movement-type-group">
+        <label>Movement Type</label>
+        <select id="movement-type-select">
+          <option value="bilateral">Bilateral</option>
+          <option value="unilateral">Unilateral</option>
+        </select>
+      </div>
+      <div class="form-group" id="movement-side-group" style="display:none;">
+        <label for="movement-side-select">Side</label>
+        <select id="movement-side-select">
+          <option value="">-- Select Side --</option>
+          <optgroup label="Arms">
+            <option value="left arm">Left Arm</option>
+            <option value="right arm">Right Arm</option>
+          </optgroup>
+          <optgroup label="Legs">
+            <option value="left leg">Left Leg</option>
+            <option value="right leg">Right Leg</option>
+          </optgroup>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    `;
+    insights.parentElement.insertBefore(wrap, insights.nextSibling);
+
+    const typeSel = wrap.querySelector("#movement-type-select");
+    const sideGrp = wrap.querySelector("#movement-side-group");
+    const sideSel = wrap.querySelector("#movement-side-select");
+
+    typeSel.addEventListener("change", () => {
+      wizard.movementType = typeSel.value;
+      if (wizard.movementType === "unilateral") {
+        sideGrp.style.display = "block";
+      } else {
+        sideGrp.style.display = "none";
+        sideSel.value = "";
+        wizard.side = "";
+      }
+    });
+    sideSel.addEventListener("change", () => {
+      wizard.side = sideSel.value;
+    });
+  }
+
+  // set defaults from wizard state
+  const typeSel = wrap.querySelector("#movement-type-select");
+  const sideGrp = wrap.querySelector("#movement-side-group");
+  const sideSel = wrap.querySelector("#movement-side-select");
+  typeSel.value = wizard.movementType || "bilateral";
+  if (typeSel.value === "unilateral") {
+    sideGrp.style.display = "block";
+    sideSel.value = wizard.side || "";
+  } else {
+    sideGrp.style.display = "none";
+    sideSel.value = "";
+  }
+  return wrap;
+}
+
 function showExerciseInsights(name) {
   const box = ensureInsightsNode();
   if (!name) { box.textContent = ""; return; }
@@ -360,18 +421,29 @@ function showExerciseInsights(name) {
   }
   box.innerHTML = parts.join(" &nbsp;•&nbsp; ");
 }
+
 function populateExercises() {
   const select = document.getElementById("exercise-select");
   select.innerHTML = `<option value="">--Select--</option>`;
+
   const pool = byLocation(EXERCISES_NORM, wizard.location);
   const filtered = byCategoryAndMuscle(pool, wizard.category, wizard.muscle)
     .filter((e) => wizard.equipment ? e.equipment.includes(wizard.equipment) : true);
+
   const names = uniq(filtered.map((e) => e.name)).sort();
   select.innerHTML += names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.includes(wizard.exercise)) select.value = wizard.exercise;
+
   showExerciseInsights(select.value || null);
-  select.onchange = () => { wizard.exercise = select.value; showExerciseInsights(wizard.exercise); };
+  ensureMovementControls(); // ensure unilateral/bilateral controls are present
+
+  select.onchange = () => {
+    wizard.exercise = select.value;
+    showExerciseInsights(wizard.exercise);
+    ensureMovementControls();
+  };
 }
+
 function renderSetRows(n) {
   const grid = document.getElementById("sets-grid");
   grid.innerHTML = "";
@@ -385,11 +457,26 @@ function renderSetRows(n) {
     grid.appendChild(row);
   }
 }
+
 function validateAndStoreStep5() {
   const hint = document.getElementById("s5-hint");
   const exercise = document.getElementById("exercise-select").value;
   if (!exercise) { if (hint) hint.textContent = "Choose an exercise."; return false; }
   wizard.exercise = exercise;
+
+  // Movement type + side validation
+  const typeSel = document.getElementById("movement-type-select");
+  const sideSel = document.getElementById("movement-side-select");
+  wizard.movementType = typeSel ? typeSel.value : "bilateral";
+  if (wizard.movementType === "unilateral") {
+    if (!sideSel || !sideSel.value) {
+      if (hint) hint.textContent = "Please choose which side for unilateral movement."; 
+      return false;
+    }
+    wizard.side = sideSel.value;
+  } else {
+    wizard.side = "";
+  }
 
   const n = Math.max(1, toInt(document.getElementById("sets-input").value, 1));
   wizard.sets = n;
@@ -423,6 +510,8 @@ function addExerciseToWorkout() {
     category: wizard.category,
     equipment: wizard.equipment,
     muscle: wizard.category === "specific muscle" ? wizard.muscle : null,
+    movementType: wizard.movementType, // NEW
+    side: wizard.side || "",           // NEW
     sets: wizard.sets,
     setReps: wizard.setReps.slice(),
     setWeights: wizard.setWeights.slice(),
@@ -437,6 +526,10 @@ function addExerciseToWorkout() {
   document.getElementById("sets-input").value = "3";
   wizard.exercise = ""; wizard.sets = 3; renderSetRows(3);
   ensureInsightsNode().textContent = "";
+  // reset movement control to bilateral by default
+  wizard.movementType = "bilateral";
+  wizard.side = "";
+  ensureMovementControls();
 
   updateReviewButtonState();
 }
@@ -448,7 +541,8 @@ function renderCurrentWorkoutList() {
     wrap.style.display = "block";
     currentWorkoutExercises.forEach((ex, idx) => {
       const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
-      const meta = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""}`;
+      const moveMeta = ex.movementType === "unilateral" ? ` • ${title(ex.side)}` : "";
+      const meta = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}${moveMeta}`;
       const div = document.createElement("div");
       div.className = "workout-item";
       div.innerHTML = `
@@ -496,7 +590,8 @@ function buildSessionSummary() {
       if (trend.dir === "na")   badge = ` <span style="color:#9aa0a6;">— no history</span>`;
 
       const pairs = ex.setReps.map((r, i) => `${r}x${ex.setWeights[i]}kg`).join(", ");
-      const metaLine = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""}`;
+      const moveMeta = ex.movementType === "unilateral" ? ` • ${title(ex.side)}` : "";
+      const metaLine = `${title(ex.category)} • ${title(ex.equipment)}${ex.muscle ? ` • ${ex.muscle}` : ""} • ${title(ex.movementType)}${moveMeta}`;
 
       const card = document.createElement("div");
       card.className = "summary-exercise";
@@ -531,6 +626,8 @@ function saveSession() {
     userWorkoutData[ex.name].records.push({
       id: ex.id, date: dt,
       category: ex.category, equipment: ex.equipment, muscle: ex.muscle,
+      movementType: ex.movementType || "bilateral", // NEW
+      side: ex.side || "",                           // NEW
       sets: ex.sets, setReps: ex.setReps, setWeights: ex.setWeights,
       maxWeight: ex.maxWeight, maxWeightSetCount: ex.maxWeightSetCount
     });
@@ -547,6 +644,7 @@ function saveSession() {
   Object.assign(wizard, {
     location: "", timing: "now", datetime: nowIsoMinute(),
     category: "", muscle: "", equipment: "", exercise: "",
+    movementType: "bilateral", side: "",
     sets: 3, setReps: [], setWeights: [], maxWeight: 0, maxWeightSetCount: 0
   });
 
@@ -560,8 +658,8 @@ function saveSession() {
   const exSel = document.getElementById("exercise-select"); if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
   const setsInput = document.getElementById("sets-input"); if (setsInput) setsInput.value = "3";
   renderSetRows(3);
+  ensureMovementControls(); // reset UI
 
-  // After save, we keep you on Step 1 on Logger (fresh start). If you prefer to stay on the same step, swap to: goToStep(lastLoggerStep);
   goToStep(1);
 }
 
@@ -569,33 +667,26 @@ function saveSession() {
    History view
 ====================================================================== */
 function showHistoryView() {
-  // Remember where you were on the logger page
   lastLoggerStep = currentStep || lastLoggerStep;
   pageScroll.logger = document.scrollingElement.scrollTop;
 
-  // Switch pages
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.getElementById("workout-history").classList.add("active");
 
   populateHistoryDropdown();
 
-  // Restore history scroll
   requestAnimationFrame(() => {
     document.scrollingElement.scrollTop = pageScroll.history || 0;
   });
 }
 function showLoggerView() {
-  // Remember where you were on the history page
   pageScroll.history = document.scrollingElement.scrollTop;
 
-  // Switch pages
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.getElementById("workout-logger").classList.add("active");
 
-  // Do NOT reset to step 1 — go back to the step you left
   goToStep(lastLoggerStep);
 
-  // Restore logger scroll
   requestAnimationFrame(() => {
     document.scrollingElement.scrollTop = pageScroll.logger || 0;
   });
@@ -658,7 +749,9 @@ function displayExerciseHistory() {
     const pairs = record.setReps
       ? record.setReps.map((r, i) => `${r}x${record.setWeights[i]}kg`).join(", ")
       : `Reps: ${record.reps} | Weights: ${record.setWeights.join(", ")}kg`;
-    const meta = `${title(record.category || "n/a")} • ${title(record.equipment || "n/a")}${record.muscle ? ` • ${record.muscle}` : ""}`;
+    const moveMeta = record.movementType === "unilateral" ? ` • ${title(record.side || "")}` : "";
+    const meta = `${title(record.category || "n/a")} • ${title(record.equipment || "n/a")}${record.muscle ? ` • ${record.muscle}` : ""} • ${title(record.movementType || "bilateral")}${moveMeta}`;
+
     const li = document.createElement("li");
     li.innerHTML = `
       <span>
@@ -706,6 +799,9 @@ function editRecord(exerciseName, recordId) {
   wizard.muscle = record.muscle || "";
   wizard.equipment = record.equipment || "";
   wizard.exercise = exerciseName;
+  wizard.movementType = record.movementType || "bilateral"; // NEW
+  wizard.side = record.side || "";                           // NEW
+
   wizard.sets = record.sets || (record.setWeights ? record.setWeights.length : 3);
   wizard.setReps = record.setReps ? record.setReps.slice() : Array(wizard.sets).fill(record.reps || 10);
   wizard.setWeights = record.setWeights ? record.setWeights.slice() : Array(wizard.sets).fill(0);
@@ -732,6 +828,9 @@ function editRecord(exerciseName, recordId) {
   populateExercises();
   const exSel = document.getElementById("exercise-select"); if (exSel) exSel.value = wizard.exercise;
 
+  // Ensure movement controls show the existing values
+  ensureMovementControls();
+
   const setsInput = document.getElementById("sets-input"); if (setsInput) setsInput.value = wizard.sets;
   renderSetRows(wizard.sets);
   const repInputs = [...document.querySelectorAll('#sets-grid input[data-kind="reps"]')];
@@ -741,8 +840,9 @@ function editRecord(exerciseName, recordId) {
 
   currentWorkoutExercises = [{
     id: record.id, date: wizard.datetime, name: wizard.exercise, category: wizard.category,
-    equipment: wizard.equipment, muscle: wizard.muscle || null, sets: wizard.sets,
-    setReps: wizard.setReps.slice(), setWeights: wizard.setWeights.slice(),
+    equipment: wizard.equipment, muscle: wizard.muscle || null,
+    movementType: wizard.movementType, side: wizard.side || "",
+    sets: wizard.sets, setReps: wizard.setReps.slice(), setWeights: wizard.setWeights.slice(),
     maxWeight: wizard.maxWeight, maxWeightSetCount: wizard.maxWeightSetCount
   }];
   renderCurrentWorkoutList();
