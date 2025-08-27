@@ -1,32 +1,27 @@
 // ========================================================
-// Workout Logger - script.js (full)
-// exercises live in exercises.js (loaded BEFORE this file)
+// Workout Logger - script.js (FULL)
+// Requires: Chart.js + exercises.js (loaded BEFORE this file)
 // ========================================================
 //
-// Features:
-// - Wizard: Location → Timing → Category(+muscle) → Equipment → Exercise & Sets → Review
-// - Robust library handling: category/categories, muscle/muscles, equipment string/array
-// - Unilateral mode: renders left & right sets
-// - Per-set Prev markers: last weight × reps for that set/side
-// - Review: this vs last vs best (with dates) + up/down badge
-// - Save/load to localStorage by exercise (best tracking)
-// - History view: Chart.js line chart, edit/delete
-// - Preserve step + scroll when switching Logger ↔ History
+// Wizard flow:
+//  1) Location (Gym/Home)
+//  2) Timing (Now/Past) + datetime
+//  3) What you're training (category + muscle if "specific muscle")
+//  4) Equipment (auto-filtered by category + muscle + location)
+//  5) Exercise + sets grid (unilateral support, per-set prev markers)
+//  6) Review (this vs last vs best) + Save
 //
-// Required HTML IDs (already in your markup):
-//   Pages: #workout-logger, #workout-history
-//   Buttons: #next-btn, #prev-btn, #add-exercise-btn, #edit-exercises-btn, #save-session-btn, #to-history, #to-logger
-//   Step inputs: #workout-type-select, #workout-datetime, #work-on-select, #muscle-select, #equipment-select, #exercise-select, #sets-input
-//   Step containers: elements with .wizard-step (6 steps), #exercise-inputs (anchor for sets grids), #s5-hint
-//   Session list: #current-workout-list-container, #current-workout-list
-//   Review: #summary-meta, #summary-exercises, #summary-totals
-//   History: #history-select, #history-details, #best-weight-title, #history-chart, #history-log
+// Data model:
+//  - exercisesData (from exercises.js) with schema:
+//      { name, categories:[], equipment:[], muscles:[] }
+//  - userWorkoutData in localStorage keyed by exercise name:
+//      userWorkoutData[exerciseName] = { bestWeight, records: [ { id,date,sets,reps,setWeights | left/right, movementType, maxWeight } ] }
 //
-// Load order in HTML:
-//   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-//   <script src="exercises.js"></script>
-//   <script src="script.js"></script>
-//
+// Notes:
+//  - Case-insensitive matching for categories, muscles, equipment
+//  - Accepts both "category" or "categories", "muscle" or "muscles", "equipment" as string or array
+//  - Shows home-only equipment (body weight, resistance bands, kettlebell) when location = home
+//  - Preserves step + scroll when switching between Logger/History
 // ========================================================
 
 
@@ -38,16 +33,93 @@ let currentWorkoutExercises = [];
 let currentStep = 1;
 let editingRecord = null;
 let myChart = null;
-
 let lastLoggerStep = 1;
 const pageScroll = { logger: 0, history: 0 };
+
+// -------------------------
+// Normalization helpers
+// -------------------------
+function norm(s){ return (s ?? "").toString().trim().toLowerCase(); }
+
+function categoriesOf(e){
+  if (Array.isArray(e?.categories)) return e.categories.map(norm).filter(Boolean);
+  if (e?.category) return [norm(e.category)];
+  return [];
+}
+function musclesOf(e){
+  if (Array.isArray(e?.muscles)) return e.muscles.map(norm).filter(Boolean);
+  if (e?.muscle) return [norm(e.muscle)];
+  return [];
+}
+function equipmentsOf(e){
+  if (Array.isArray(e?.equipment)) return e.equipment.map(norm).filter(Boolean);
+  if (typeof e?.equipment === "string" && e.equipment.trim()) return [norm(e.equipment)];
+  return [];
+}
+function capEach(s){ return s.split(" ").map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(" "); }
+
+// -------------------------
+// DOM helpers
+// -------------------------
+function on(sel, evt, fn) {
+  const el = document.querySelector(sel);
+  if (el) el.addEventListener(evt, fn);
+}
+function bindChange(sel, fn) {
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.removeEventListener("change", fn);
+  el.addEventListener("change", fn);
+}
+function setOptions(selectSel, arr, mapFn) {
+  const el = /** @type {HTMLSelectElement} */(document.querySelector(selectSel));
+  if (!el) return;
+  const html = (arr || []).map(v => {
+    const { value, text } = mapFn ? mapFn(v) : { value: v, text: v };
+    return `<option value="${escapeHtml(value)}">${escapeHtml(text)}</option>`;
+  }).join("");
+  el.innerHTML = html;
+}
+function setVal(sel, v) {
+  const el = /** @type {HTMLInputElement|HTMLSelectElement} */(document.querySelector(sel));
+  if (el) el.value = v;
+}
+function val(sel) {
+  const el = /** @type {HTMLInputElement|HTMLSelectElement} */(document.querySelector(sel));
+  return el ? el.value : "";
+}
+
+// Numbers & formatting
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function clampInt(n, min, max){ return Math.max(min, Math.min(max, Number.isFinite(n)?n:min)); }
+function isFiniteNum(x){ return typeof x === "number" && Number.isFinite(x); }
+function stripZeros(n){
+  if (!isFiniteNum(n)) return n;
+  const s = String(n);
+  return s.includes(".") ? s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1") : s;
+}
+function toInt(x){ const n = parseInt(x); return Number.isFinite(n) ? n : 0; }
+function getAt(arr, i, fallback=null){ return Array.isArray(arr) ? (i>=0 && i<arr.length ? arr[i] : fallback) : fallback; }
+function toLocal(iso){ try { return new Date(iso).toLocaleString(); } catch { return iso || "—"; } }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// Debug helpers (optional)
+window._dumpData = () => console.log("userWorkoutData:", userWorkoutData);
+window._clearData = () => {
+  if (confirm("Clear ALL workout data?")) {
+    localStorage.removeItem("userWorkoutData");
+    userWorkoutData = {};
+    currentWorkoutExercises = [];
+    renderCurrentWorkoutList();
+    alert("All data cleared.");
+  }
+};
 
 
 // -------------------------
 // Init
 // -------------------------
 document.addEventListener("DOMContentLoaded", () => {
-  // Populate initial dropdowns
   populateWorkoutTypeDropdown();
   populateWorkOnDropdown();
   populateMuscleDropdown();
@@ -84,15 +156,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Category changes → show/hide muscle + clear downstream selects
+  // Category change => toggle muscle picker + clear downstream
   on("#work-on-select", "change", () => {
-    const cat = val("#work-on-select");
+    const cat = norm(val("#work-on-select"));
     const g = document.getElementById("muscle-select-group");
-    if (g) g.style.display = (cat && cat.toLowerCase() === "specific muscle") ? "block" : "none";
+    if (g) g.style.display = (cat === "specific muscle") ? "block" : "none";
     setOptions("#equipment-select", ["--Select--"]);
     setOptions("#exercise-select", ["--Select--"]);
   });
-  // Muscle change → clear downstream
+  // Muscle change => clear downstream
   on("#muscle-select", "change", () => {
     setOptions("#equipment-select", ["--Select--"]);
     setOptions("#exercise-select", ["--Select--"]);
@@ -160,7 +232,7 @@ function updateReviewButtonState() {
 
 
 // ========================================================
-// Dropdowns & filtering (robust to multiple data shapes)
+// Dropdowns & filtering
 // ========================================================
 function populateWorkoutTypeDropdown() {
   setOptions("#workout-type-select", ["--Select Location--", "gym", "home"], v => {
@@ -169,15 +241,10 @@ function populateWorkoutTypeDropdown() {
   });
 }
 
-/** Build category list from both `categories` (array) and `category` (string) */
 function populateWorkOnDropdown() {
   const data = Array.isArray(window.exercisesData) ? window.exercisesData : [];
   const found = new Set();
-
-  for (const e of data) {
-    if (Array.isArray(e.categories)) e.categories.forEach(c => c && found.add(String(c).trim()));
-    else if (e.category) found.add(String(e.category).trim());
-  }
+  for (const e of data) categoriesOf(e).forEach(c => found.add(c));
 
   let categories = Array.from(found).sort((a,b)=>a.localeCompare(b));
   if (categories.length === 0) {
@@ -187,11 +254,10 @@ function populateWorkOnDropdown() {
 
   setOptions("#work-on-select", ["--Select--", ...categories], v => {
     if (v === "--Select--") return { value: "", text: v };
-    return { value: v, text: v };
+    return { value: v, text: capEach(v) };
   });
 }
 
-/** Static muscle list */
 function populateMuscleDropdown() {
   const muscles = [
     "Abs","Biceps","Calves","Chest","Forearms","Front Delts","Glute Max","Glute Med",
@@ -204,69 +270,53 @@ function populateMuscleDropdown() {
   });
 }
 
-/** Helper: normalize equipment to an array */
-function equipmentsOf(e){
-  if (Array.isArray(e?.equipment)) return e.equipment.filter(Boolean).map(x=>String(x).trim());
-  if (typeof e?.equipment === "string" && e.equipment.trim()) return [e.equipment.trim()];
-  return [];
-}
-
-/** Step 4: Equipment for chosen category (+muscle if specific), filtered by location */
 function populateEquipment() {
-  const category = val("#work-on-select");
-  const location = val("#workout-type-select");
-  const muscle   = val("#muscle-select");
+  const all       = Array.isArray(window.exercisesData) ? window.exercisesData : [];
+  const category  = norm(val("#work-on-select"));
+  const location  = norm(val("#workout-type-select"));
+  const muscle    = norm(val("#muscle-select"));
 
   if (!category) { setOptions("#equipment-select", ["--Select--"]); return; }
 
-  let filtered = (Array.isArray(window.exercisesData) ? window.exercisesData : []).filter(e =>
-    (Array.isArray(e.categories) && e.categories.includes(category)) ||
-    (typeof e.category === "string" && e.category === category)
-  );
-
-  if (category.toLowerCase() === "specific muscle" && muscle) {
-    filtered = filtered.filter(e => {
-      const arr = Array.isArray(e.muscles) ? e.muscles :
-                 (typeof e.muscle === "string" ? [e.muscle] : []);
-      return arr.includes(muscle);
-    });
+  // category (and optional muscle)
+  let filtered = all.filter(e => categoriesOf(e).includes(category));
+  if (category === "specific muscle" && muscle) {
+    filtered = filtered.filter(e => musclesOf(e).includes(muscle));
   }
 
+  // Home-only equipment
   if (location === "home") {
-    const HOME = new Set(["body weight", "resistance bands", "kettlebell"]);
+    const HOME = new Set(["body weight","resistance bands","kettlebell"]);
     filtered = filtered.filter(e => equipmentsOf(e).some(eq => HOME.has(eq)));
   }
 
-  const equipments = [...new Set(filtered.flatMap(e => equipmentsOf(e)))].sort((a,b)=>a.localeCompare(b));
+  const equipments = [...new Set(filtered.flatMap(equipmentsOf))].sort((a,b)=>a.localeCompare(b));
+
+  // Diagnostics
+  if (equipments.length === 0) {
+    console.warn("[populateEquipment] No equipment found", { category, muscle: muscle || "(n/a)", location });
+  }
 
   setOptions("#equipment-select", ["--Select--", ...equipments], v => {
     if (v === "--Select--") return { value: "", text: v };
-    return { value: v, text: capitalize(v) };
+    return { value: v, text: capEach(v) };
   });
 
   setOptions("#exercise-select", ["--Select--"]);
 }
 
-/** Step 5: Exercises for chosen category + equipment (+ muscle if specific) */
 function populateExercises() {
-  const category  = val("#work-on-select");
-  const equipment = val("#equipment-select");
-  const muscle    = val("#muscle-select");
+  const all        = Array.isArray(window.exercisesData) ? window.exercisesData : [];
+  const category   = norm(val("#work-on-select"));
+  const equipment  = norm(val("#equipment-select"));
+  const muscle     = norm(val("#muscle-select"));
+
   if (!category || !equipment) { setOptions("#exercise-select", ["--Select--"]); return; }
 
-  let pool = (Array.isArray(window.exercisesData) ? window.exercisesData : []).filter(e =>
-    (Array.isArray(e.categories) && e.categories.includes(category)) ||
-    (typeof e.category === "string" && e.category === category)
-  );
-
-  if (category.toLowerCase() === "specific muscle" && muscle) {
-    pool = pool.filter(e => {
-      const arr = Array.isArray(e.muscles) ? e.muscles :
-                 (typeof e.muscle === "string" ? [e.muscle] : []);
-      return arr.includes(muscle);
-    });
+  let pool = all.filter(e => categoriesOf(e).includes(category));
+  if (category === "specific muscle" && muscle) {
+    pool = pool.filter(e => musclesOf(e).includes(muscle));
   }
-
   pool = pool.filter(e => equipmentsOf(e).includes(equipment));
 
   const names = [...new Set(pool.map(e => e.name))].sort((a,b)=>a.localeCompare(b));
@@ -275,7 +325,7 @@ function populateExercises() {
     return { value: v, text: v };
   });
 
-  // Add unilateral toggle if missing
+  // Ensure unilateral toggle exists
   if (!document.getElementById("unilateral-toggle")) {
     const select = document.getElementById("exercise-select");
     if (select?.parentElement) {
@@ -286,7 +336,6 @@ function populateExercises() {
     }
   }
 
-  // Bind or rebind change handlers
   bindChange("#sets-input", renderSetWeightInputs);
   bindChange("#exercise-select", renderSetWeightInputs);
   bindChange("#unilateral-toggle", renderSetWeightInputs);
@@ -296,7 +345,7 @@ function populateExercises() {
 
 
 // ========================================================
-// Sets grid + Prev markers
+// Sets grid + per-set "Prev" markers
 // ========================================================
 function renderSetWeightInputs() {
   const sets = clampInt(parseInt(val("#sets-input")), 1, 99);
@@ -930,7 +979,7 @@ function editRecord(exName, recordId) {
 
 
 // ========================================================
-// Validation & Utilities
+// Validation
 // ========================================================
 function validateAndStore(step) {
   switch (step) {
@@ -946,7 +995,7 @@ function validateAndStore(step) {
     case 3: {
       const cat = val("#work-on-select");
       if (!cat) { alert("Please select what you are training."); return false; }
-      if (cat.toLowerCase() === "specific muscle" && !val("#muscle-select")) {
+      if (norm(cat) === "specific muscle" && !val("#muscle-select")) {
         alert("Please choose a specific muscle."); return false;
       }
       return true;
@@ -958,60 +1007,3 @@ function validateAndStore(step) {
       return true;
   }
 }
-
-// DOM helpers
-function on(sel, evt, fn) {
-  const el = document.querySelector(sel);
-  if (el) el.addEventListener(evt, fn);
-}
-function bindChange(sel, fn) {
-  const el = document.querySelector(sel);
-  if (!el) return;
-  el.removeEventListener("change", fn);
-  el.addEventListener("change", fn);
-}
-function setOptions(selectSel, arr, mapFn) {
-  const el = /** @type {HTMLSelectElement} */(document.querySelector(selectSel));
-  if (!el) return;
-  const html = (arr || []).map(v => {
-    const { value, text } = mapFn ? mapFn(v) : { value: v, text: v };
-    return `<option value="${escapeHtml(value)}">${escapeHtml(text)}</option>`;
-  }).join("");
-  el.innerHTML = html;
-}
-function setVal(sel, v) {
-  const el = /** @type {HTMLInputElement|HTMLSelectElement} */(document.querySelector(sel));
-  if (el) el.value = v;
-}
-function val(sel) {
-  const el = /** @type {HTMLInputElement|HTMLSelectElement} */(document.querySelector(sel));
-  return el ? el.value : "";
-}
-
-// Numbers & formatting
-function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
-function clampInt(n, min, max){ return Math.max(min, Math.min(max, Number.isFinite(n)?n:min)); }
-function isFiniteNum(x){ return typeof x === "number" && Number.isFinite(x); }
-function stripZeros(n){
-  if (!isFiniteNum(n)) return n;
-  const s = String(n);
-  return s.includes(".") ? s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1") : s;
-}
-function toInt(x){ const n = parseInt(x); return Number.isFinite(n) ? n : 0; }
-function getAt(arr, i, fallback=null){ return Array.isArray(arr) ? (i>=0 && i<arr.length ? arr[i] : fallback) : fallback; }
-function toLocal(iso){ try { return new Date(iso).toLocaleString(); } catch { return iso || "—"; } }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-// Debug helpers (optional)
-window._dumpData = () => console.log("userWorkoutData:", userWorkoutData);
-window._clearData = () => {
-  if (confirm("Clear ALL workout data?")) {
-    localStorage.removeItem("userWorkoutData");
-    userWorkoutData = {};
-    currentWorkoutExercises = [];
-    renderCurrentWorkoutList();
-    alert("All data cleared.");
-  }
-};
-
-// End of script.js
