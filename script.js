@@ -23,6 +23,17 @@ const toFloat = (v, f = 0) => { const n = parseFloat(v); return Number.isFinite(
 const isoToLocalString = (iso) => { try { return new Date(iso).toLocaleString(); } catch { return iso || "—"; } };
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
 const fmtDelta = (d) => (d == null ? "—" : d > 0 ? `▲ +${d.toFixed(2)}kg` : d < 0 ? `▼ ${Math.abs(d).toFixed(2)}kg` : `= 0kg`);
+const FIXED_CATEGORIES = [
+  "upper body",
+  "lower body",
+  "push",
+  "pull",
+  "full body",
+  "hinge",
+  "squat",
+  "core",
+  "specific muscle"
+];
 
 /* ---- Normalization PATCH (robustly read your library) ---- */
 function toLowerArray(val) {
@@ -396,46 +407,61 @@ function initStep3() {
 
   // Build categories from your data
   const cats = allCategories();
-  workOn.innerHTML = `<option value="">--Select--</option>${cats.map(c=>`<option value="${c}">${title(c)}</option>`).join("")}`;
+   workOn.innerHTML =
+    `<option value="">--Select--</option>` +
+    FIXED_CATEGORIES.map((c) => `<option value="${c}">${capitalize(c)}</option>`).join("");
   workOn.value = wizard.category || "";
 
   // Build muscles from your data
-  const muscles = allMuscles();
-  musclesSel.innerHTML = `<option value="">--Select--</option>${muscles.map(m=>`<option value="${m}">${m}</option>`).join("")}`;
-  musclesSel.value = wizard.muscle || "";
+    const muscles =
+    Array.from(
+      new Set(
+        (Array.isArray(EXERCISES_NORM) ? EXERCISES_NORM : [])
+          .flatMap((e) => Array.isArray(e.muscles) ? e.muscles : [])
+          .map((m) => String(m).trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
 
-  // Show/hide muscle group when "specific muscle" is selected
-  const setMuscleVisibility = () => {
-    if (String(workOn.value).toLowerCase() === "specific muscle") {
+    workOn.addEventListener("change", () => {
+    const cat = normalizeCategory(workOn.value);
+    wizard.category = cat;
+    wizard.equipment = "";
+    wizard.exercise = "";
+       // Show/hide muscle group when "specific muscle" is selected
+  if (cat === "specific muscle") {
       muscleGroup.style.display = "block";
     } else {
       muscleGroup.style.display = "none";
-      musclesSel.value = "";
       wizard.muscle = "";
+      musclesSel.value = "";
     }
-  };
-  setMuscleVisibility();
+   // Clearing downstream when category changes
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
+  });
 
-  workOn.addEventListener("change", () => {
-    wizard.category = workOn.value;
-    wizard.equipment = ""; wizard.exercise = "";
-    setMuscleVisibility();
-  });
-  musclesSel.addEventListener("change", () => {
+musclesSel.addEventListener("change", () => {
     wizard.muscle = musclesSel.value;
+    // Clear downstream when muscle changes
+    setOptions("#equipment-select", ["--Select--"]);
+    setOptions("#exercise-select", ["--Select--"]);
   });
-}
+}   
+ 
 function validateAndStoreStep3() {
   const hint = document.getElementById("s3-hint");
-  const cat = document.getElementById("work-on-select").value;
-  if (!cat) { if (hint) hint.textContent = "Please select what you're training."; return false; }
+  const raw = document.getElementById("work-on-select").value;
+  if (!raw) { if (hint) hint.textContent = "Please select what you're training."; return false; }
+  const cat = normalizeCategory(raw);
   wizard.category = cat;
 
-  if (String(cat).toLowerCase() === "specific muscle") {
+  if (cat === "specific muscle") {
     const mus = document.getElementById("muscle-select").value;
     if (!mus) { if (hint) hint.textContent = "Please choose a specific muscle."; return false; }
     wizard.muscle = mus;
   }
+
   if (hint) hint.textContent = "";
   return true;
 }
