@@ -2,11 +2,11 @@
    sets.js
    Responsibilities:
      • Build the set-entry grids for Bilateral / Unilateral
-     • Show per-set "Prev" markers (now: weight × reps)
-     • Read current inputs into the wizard
+     • Show per-set "Prev" markers (weight × reps) from last session
+     • Validate & read current inputs into the wizard
      • Add the configured exercise to the in-session list
    Depends on globals provided elsewhere:
-     - wizard (object with step-5 state)
+     - wizard (object with step-5 state, e.g. exercise, movementType, sets, etc.)
      - userWorkoutData (history store)
      - currentWorkoutExercises (array)
      - renderCurrentWorkoutList(), updateReviewButtonState()
@@ -17,8 +17,8 @@
 /* -----------------------------------------------------------------------
    computePrevPerSet(exName, movementType, setsCount)
    Returns per-set previous strings (“50kg × 10”) for last session.
-   • Bilateral:   { prev:  [ "W×R", ... ] }
-   • Unilateral:  { prevL: [ "W×R", ... ], prevR: [ "W×R", ... ] }
+   • Bilateral:   { prev:  [ "Wkg × R", ... ] }
+   • Unilateral:  { prevL: [ "Wkg × R", ... ], prevR: [ "Wkg × R", ... ] }
 ------------------------------------------------------------------------ */
 window.computePrevPerSet = function computePrevPerSet(exName, movementType, setsCount) {
   const blanks = Array(setsCount).fill("");
@@ -36,7 +36,6 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
       : { prev: blanks.slice() };
   }
 
-  // Helper to pair W & R safely
   const pairWR = (w, r) => {
     const hasW = typeof w === "number" && Number.isFinite(w);
     const hasR = typeof r === "number" && Number.isFinite(r);
@@ -50,7 +49,7 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
     const prevL = blanks.slice();
     const prevR = blanks.slice();
 
-    // If last session had distinct L/R arrays, use them.
+    // Prefer true L/R history first
     if (Array.isArray(last.setWeightsL) && Array.isArray(last.setRepsL)) {
       for (let i = 0; i < setsCount; i++) {
         const w = i < last.setWeightsL.length ? last.setWeightsL[i] : null;
@@ -58,23 +57,7 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
         const s = pairWR(w, r);
         if (s) prevL[i] = s;
       }
-    } else if (Array.isArray(last.setWeights) && Array.isArray(last.setReps)) {
-      // Last was bilateral → mirror to both sides as a reference.
-      for (let i = 0; i < setsCount; i++) {
-        const w = i < last.setWeights.length ? last.setWeights[i] : null;
-        const r = i < last.setReps.length    ? last.setReps[i]    : null;
-        const s = pairWR(w, r);
-        if (s) { prevL[i] = s; prevR[i] = s; }
-      }
-    } else {
-      // Fall back to a maxWeight marker if present.
-      if (typeof last.maxWeight === "number" && Number.isFinite(last.maxWeight)) {
-        const s = `${trimZeros(last.maxWeight)}kg`;
-        for (let i = 0; i < setsCount; i++) { prevL[i] = s; prevR[i] = s; }
-      }
     }
-
-    // Right side arrays if present
     if (Array.isArray(last.setWeightsR) && Array.isArray(last.setRepsR)) {
       for (let i = 0; i < setsCount; i++) {
         const w = i < last.setWeightsR.length ? last.setWeightsR[i] : null;
@@ -84,12 +67,26 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
       }
     }
 
+    // If no L/R arrays, mirror bilateral to both sides
+    if (prevL.every(v => v === "") && prevR.every(v => v === "")) {
+      if (Array.isArray(last.setWeights) && Array.isArray(last.setReps)) {
+        for (let i = 0; i < setsCount; i++) {
+          const w = i < last.setWeights.length ? last.setWeights[i] : null;
+          const r = i < last.setReps.length    ? last.setReps[i]    : null;
+          const s = pairWR(w, r);
+          if (s) { prevL[i] = s; prevR[i] = s; }
+        }
+      } else if (typeof last.maxWeight === "number" && Number.isFinite(last.maxWeight)) {
+        const s = `${trimZeros(last.maxWeight)}kg`;
+        for (let i = 0; i < setsCount; i++) { prevL[i] = s; prevR[i] = s; }
+      }
+    }
+
     return { prevL, prevR };
   }
 
-  // Bilateral current movement
+  // Bilateral
   const prev = blanks.slice();
-
   if (Array.isArray(last.setWeights) && Array.isArray(last.setReps)) {
     for (let i = 0; i < setsCount; i++) {
       const w = i < last.setWeights.length ? last.setWeights[i] : null;
@@ -101,14 +98,13 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
     (Array.isArray(last.setWeightsL) && Array.isArray(last.setRepsL)) ||
     (Array.isArray(last.setWeightsR) && Array.isArray(last.setRepsR))
   ) {
-    // Last was unilateral → take the heavier/more complete side per set index
+    // Last was unilateral — take heavier side (and its reps) at each index
     for (let i = 0; i < setsCount; i++) {
       const wL = Array.isArray(last.setWeightsL) && i < last.setWeightsL.length ? last.setWeightsL[i] : null;
       const rL = Array.isArray(last.setRepsL)    && i < last.setRepsL.length    ? last.setRepsL[i]    : null;
       const wR = Array.isArray(last.setWeightsR) && i < last.setWeightsR.length ? last.setWeightsR[i] : null;
       const rR = Array.isArray(last.setRepsR)    && i < last.setRepsR.length    ? last.setRepsR[i]    : null;
 
-      // Prefer heavier weight if both present
       let w = null, r = null;
       if (isFiniteNum(wL) && isFiniteNum(wR)) { w = Math.max(wL, wR); r = (w === wL ? rL : rR); }
       else if (isFiniteNum(wL)) { w = wL; r = rL; }
@@ -130,7 +126,8 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
    Builds the input grids for sets (and shows "Prev: …" markers).
 ------------------------------------------------------------------------ */
 window.renderSetRows = function renderSetRows() {
-  const n = Math.max(1, toInt(document.getElementById("sets-input")?.value ?? 1, 1));
+  const setsInputEl = document.getElementById("sets-input");
+  const n = Math.max(1, toInt(setsInputEl?.value ?? 1, 1));
   wizard.sets = n;
 
   // Ensure container exists
@@ -189,7 +186,7 @@ window.renderSetRows = function renderSetRows() {
       gridR.appendChild(rowR);
     }
 
-    // Prefill from wizard (editing)
+    // Prefill from wizard if editing
     if (wizard.setRepsL?.length === n && wizard.setWeightsL?.length === n) {
       [...gridL.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsL[i] ?? "");
       [...gridL.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsL[i] ?? "");
@@ -319,6 +316,10 @@ function validateCurrentSetGrid() {
 /* -----------------------------------------------------------------------
    addExerciseToWorkout()
    Reads the grid → pushes a normalized exercise object to the session list.
+   IMPORTANT CHANGE:
+   - We **do not** clear the selected exercise or movement type anymore.
+   - We just clear the input fields and re-render so the grid stays visible,
+     and Prev markers keep showing for the same exercise.
 ------------------------------------------------------------------------ */
 window.addExerciseToWorkout = function addExerciseToWorkout() {
   if (!validateCurrentSetGrid()) return;
@@ -352,30 +353,24 @@ window.addExerciseToWorkout = function addExerciseToWorkout() {
 
   currentWorkoutExercises.push(ex);
   renderCurrentWorkoutList();
+  updateReviewButtonState();
 
-  // Reset the inline editor for the next add (keep exercise selection empty)
-  const exSel = document.getElementById("exercise-select");
-  if (exSel) exSel.value = "";
-  const setsInput = document.getElementById("sets-input");
-  if (setsInput) setsInput.value = "3";
-
-  // Reset editor state
-  wizard.exercise = "";
-  wizard.sets = 3;
-  wizard.movementType = "bilateral";
+  // --- Keep the exercise & movement type selected ---
+  // Clear only the inputs (so user can log another set or same exercise cleanly)
   wizard.setReps = []; wizard.setWeights = [];
   wizard.setRepsL = []; wizard.setWeightsL = [];
   wizard.setRepsR = []; wizard.setWeightsR = [];
   wizard.maxWeight = 0; wizard.maxWeightSetCount = 0;
 
-  // Rebuild grid (now blank)
+  // Re-render rows; since wizard.exercise is still set,
+  // Prev markers will continue to show for this exercise.
   renderSetRows();
 
-  // Clear insights if you show a box under the select
+  // Keep "insights" visible for this exercise (if you show that box)
   const insights = document.getElementById("exercise-insights");
-  if (insights) insights.textContent = "";
-
-  updateReviewButtonState();
+  if (insights && typeof showExerciseInsights === "function") {
+    showExerciseInsights(wizard.exercise);
+  }
 };
 
 /* -----------------------------------------------------------------------
@@ -388,4 +383,4 @@ function trimZeros(n){
   return s.includes(".")
     ? s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1")
     : s;
-                               }
+    }
