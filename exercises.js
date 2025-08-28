@@ -3,25 +3,25 @@ window.EXERCISES = [
   // HINGE / POSTERIOR
   {
     name: "Romanian Deadlift",
-    categories: ["hinge", "lower body", "glutes", "hamstrings"],
+    sections: ["hinge", "lower body", "glutes", "hamstrings"],
     equipment: ["barbell", "dumbbell", "kettlebell", "cable machine"],
     muscles: ["Hamstrings", "Glute Max", "Lower Back"]
   },
   {
     name: "Conventional Deadlift",
-    categories: ["hinge", "lower body", "glutes", "hamstrings", "pull"],
+    sections: ["hinge", "lower body", "glutes", "hamstrings", "pull"],
     equipment: ["barbell", "dumbbell"],
     muscles: ["Hamstrings", "Glute Max", "Lower Back", "Traps"]
   },
   {
     name: "Good Morning",
-    categories: ["hinge", "lower body", "hamstrings", "glutes"],
+    sections: ["hinge", "lower body", "hamstrings", "glutes"],
     equipment: ["barbell", "dumbbell"],
     muscles: ["Hamstrings", "Glute Max", "Lower Back"]
   },
   {
     name: "Hip Thrust",
-    categories: ["hinge", "lower body", "glutes"],
+    sections: ["hinge", "lower body", "glutes"],
     equipment: ["barbell", "dumbbell", "machine", "cable machine"],
     muscles: ["Glute Max", "Hamstrings"]
   },
@@ -35,7 +35,7 @@ window.EXERCISES = [
   // SQUAT
   {
     name: "Back Squat",
-    categories: ["squat", "lower body", "quads", "glutes"],
+    sections: ["squat", "lower body", "quads", "glutes"],
     equipment: ["barbell"],
     muscles: ["Quads", "Glute Max", "Hamstrings"]
   },
@@ -79,7 +79,7 @@ window.EXERCISES = [
   // PUSH
   {
     name: "Bench Press",
-    categories: ["push", "upper body", "chest"],
+    sections: ["push", "upper body", "chest"],
     equipment: ["barbell", "dumbbell", "machine"],
     muscles: ["Chest", "Triceps", "Front Delts"]
   },
@@ -129,7 +129,7 @@ window.EXERCISES = [
   // PULL
   {
     name: "Bent-Over Row",
-    categories: ["pull", "upper body", "back"],
+    sections: ["pull", "upper body", "back"],
     equipment: ["barbell", "dumbbell"],
     muscles: ["Lats", "Upper Back", "Biceps"]
   },
@@ -179,7 +179,7 @@ window.EXERCISES = [
   // LOWER-LEG / ISOLATION
   {
     name: "Leg Extension",
-    categories: ["lower body", "quads", "specific muscle"],
+    sections: ["lower body", "quads", "specific muscle"],
     equipment: ["machine"],
     muscles: ["Quads"]
   },
@@ -199,7 +199,7 @@ window.EXERCISES = [
   // CORE / FULL BODY
   {
     name: "Plank",
-    categories: ["core", "full body", "body weight"],
+    sections: ["core", "full body", "body weight"],
     equipment: ["body weight"],
     muscles: ["Abs", "Obliques", "Lower Back"]
   },
