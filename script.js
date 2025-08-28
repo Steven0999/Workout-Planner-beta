@@ -1,5 +1,5 @@
 /* =======================================================================
-   Workout Session Logger — script.js (FULL)
+   Workout Session Logger — script.js (FULL, with per-set Prev WEIGHT+REPS)
    Requires: window.EXERCISES from exercises.js (loaded BEFORE this file)
 ======================================================================= */
 
@@ -169,60 +169,76 @@ function getTrendAgainstLast(exName, currentMax) {
   return { dir: "same", delta: 0 };
 }
 
-/* === Per-set previous weights to show beside inputs =================== */
+/* === Per-set previous WEIGHT+REPS to show beside inputs =============== */
+function blank(n) { return Array(n).fill(""); }
 function computePrevPerSet(exName, movementType, setsCount) {
-  const blankN = Array(setsCount).fill("");
-  if (!exName) {
-    return movementType === "unilateral"
-      ? { prevL: blankN.slice(), prevR: blankN.slice() }
-      : { prev: blankN.slice() };
-  }
+  // Returns:
+  //  bilateral: { prevW: number[]|""[], prevR: number[]|""[] }
+  //  unilateral:{ prevWL:[], prevRL:[], prevWR:[], prevRR:[] }
+  const emptyB = { prevW: blank(setsCount), prevR: blank(setsCount) };
+  const emptyU = { prevWL: blank(setsCount), prevRL: blank(setsCount), prevWR: blank(setsCount), prevRR: blank(setsCount) };
+
+  if (!exName) return movementType === "unilateral" ? emptyU : emptyB;
+
   const last = getExerciseRecordsDesc(exName)[0];
-  if (!last) {
-    return movementType === "unilateral"
-      ? { prevL: blankN.slice(), prevR: blankN.slice() }
-      : { prev: blankN.slice() };
-  }
+  if (!last) return movementType === "unilateral" ? emptyU : emptyB;
 
   if (movementType === "unilateral") {
-    let prevL = blankN.slice(), prevR = blankN.slice();
+    const out = { ...emptyU };
 
     if (Array.isArray(last.setWeightsL) && Array.isArray(last.setWeightsR)) {
       for (let i = 0; i < setsCount; i++) {
-        if (i < last.setWeightsL.length) prevL[i] = last.setWeightsL[i];
-        if (i < last.setWeightsR.length) prevR[i] = last.setWeightsR[i];
+        if (i < last.setWeightsL.length) out.prevWL[i] = last.setWeightsL[i];
+        if (i < (last.setRepsL || []).length) out.prevRL[i] = last.setRepsL[i];
+        if (i < last.setWeightsR.length) out.prevWR[i] = last.setWeightsR[i];
+        if (i < (last.setRepsR || []).length) out.prevRR[i] = last.setRepsR[i];
       }
     } else if (Array.isArray(last.setWeights)) {
+      // Map bilateral last to both sides; reps if available
       for (let i = 0; i < setsCount; i++) {
         if (i < last.setWeights.length) {
-          prevL[i] = last.setWeights[i];
-          prevR[i] = last.setWeights[i];
+          out.prevWL[i] = last.setWeights[i];
+          out.prevWR[i] = last.setWeights[i];
+        }
+        if (Array.isArray(last.setReps) && i < last.setReps.length) {
+          out.prevRL[i] = last.setReps[i];
+          out.prevRR[i] = last.setReps[i];
         }
       }
     } else if (typeof last.maxWeight === "number") {
-      prevL = Array(setsCount).fill(last.maxWeight);
-      prevR = Array(setsCount).fill(last.maxWeight);
+      out.prevWL = Array(setsCount).fill(last.maxWeight);
+      out.prevWR = Array(setsCount).fill(last.maxWeight);
+      // reps unknown -> leave blank
     }
-    return { prevL, prevR };
+    return out;
   }
 
   // Bilateral
-  let prev = blankN.slice();
+  const out = { ...emptyB };
   if (Array.isArray(last.setWeights)) {
-    for (let i = 0; i < setsCount; i++) if (i < last.setWeights.length) prev[i] = last.setWeights[i];
+    for (let i = 0; i < setsCount; i++) {
+      if (i < last.setWeights.length) out.prevW[i] = last.setWeights[i];
+      if (Array.isArray(last.setReps) && i < last.setReps.length) out.prevR[i] = last.setReps[i];
+    }
   } else if (Array.isArray(last.setWeightsL) || Array.isArray(last.setWeightsR)) {
     for (let i = 0; i < setsCount; i++) {
-      const l = Array.isArray(last.setWeightsL) && i < last.setWeightsL.length ? last.setWeightsL[i] : null;
-      const r = Array.isArray(last.setWeightsR) && i < last.setWeightsR.length ? last.setWeightsR[i] : null;
-      if (l != null && r != null) prev[i] = Math.max(l, r);
-      else if (l != null) prev[i] = l;
-      else if (r != null) prev[i] = r;
+      const lW = Array.isArray(last.setWeightsL) && i < last.setWeightsL.length ? last.setWeightsL[i] : null;
+      const rW = Array.isArray(last.setWeightsR) && i < last.setWeightsR.length ? last.setWeightsR[i] : null;
+      if (lW != null && rW != null) out.prevW[i] = Math.max(lW, rW);
+      else if (lW != null) out.prevW[i] = lW;
+      else if (rW != null) out.prevW[i] = rW;
+
+      const lR = Array.isArray(last.setRepsL) && i < last.setRepsL.length ? last.setRepsL[i] : null;
+      const rR = Array.isArray(last.setRepsR) && i < last.setRepsR.length ? last.setRepsR[i] : null;
+      if (lR != null && rR != null) out.prevR[i] = Math.max(lR, rR);
+      else if (lR != null) out.prevR[i] = lR;
+      else if (rR != null) out.prevR[i] = rR;
     }
   } else if (typeof last.maxWeight === "number") {
-    prev = Array(setsCount).fill(last.maxWeight);
+    out.prevW = Array(setsCount).fill(last.maxWeight);
+    // reps unknown
   }
-
-  return { prev };
+  return out;
 }
 
 /* ======================================================================
@@ -264,7 +280,6 @@ function goToStep(step) {
     b.classList.toggle("active", Number(b.dataset.step) === step);
   });
 
-  // enable/disable prev
   const prev = document.getElementById("prev-btn");
   if (prev) prev.disabled = step === 1;
 
@@ -290,7 +305,6 @@ function nextStep() {
     goToStep(6);
     return;
   }
-  // step 6 -> save
   saveSession();
 }
 function updateReviewButtonState() {
@@ -311,7 +325,6 @@ function updateReviewButtonState() {
     next.classList.remove("is-disabled");
   }
 }
-
 function validateAndStore(step) {
   if (step === 1) return validateAndStoreStep1();
   if (step === 2) return validateAndStoreStep2();
@@ -348,7 +361,6 @@ function validateAndStoreStep1() {
 ====================================================================== */
 function initStep2() {
   document.querySelectorAll('input[name="timing"]').forEach((r) => r.addEventListener("change", onTimingChange));
-  // default now
   const nowRadio = document.querySelector('input[name="timing"][value="now"]');
   if (nowRadio) nowRadio.checked = true;
   setDateToNow(true);
@@ -394,7 +406,6 @@ function initStep3() {
   musclesSel.innerHTML = `<option value="">--Select--</option>` + muscles.map((m) => `<option value="${m}">${m}</option>`).join('');
   musclesSel.value = wizard.muscle || "";
 
-  // show/hide muscle
   const muscleGroup = document.getElementById("muscle-select-group");
   muscleGroup.style.display = (wizard.category === "specific muscle") ? "block" : "none";
 
@@ -458,7 +469,7 @@ function initStep5() {
     setsInput.value = wizard.sets;
     setsInput.addEventListener("change", () => {
       wizard.sets = Math.max(1, toInt(setsInput.value, 1));
-      renderSetRows(); // re-render grids based on movement type
+      renderSetRows();
     });
   }
   renderSetRows();
@@ -564,10 +575,7 @@ function joinPairs(pairs) {
   return pairs.length ? pairs.join(", ") : "—";
 }
 
-/* Render set inputs:
-   - Bilateral: single grid (id: sets-grid) with "Prev" labels to the left of weight
-   - Unilateral: two grids (Left and Right) each with their own "Prev"
-*/
+/* Render set inputs with Prev weight+reps labels */
 function renderSetRows() {
   const setsInput = document.getElementById("sets-input");
   const n = Math.max(1, toInt(setsInput?.value ?? 1, 1));
@@ -583,8 +591,17 @@ function renderSetRows() {
   }
   container.innerHTML = "";
 
-  // Compute previous weights for markers
+  // Prev for labels
   const prev = computePrevPerSet(wizard.exercise, wizard.movementType, n);
+
+  const fmtPrev = (w, r) => {
+    const hasW = w !== "" && w != null && isFiniteNum(+w);
+    const hasR = r !== "" && r != null && isFiniteNum(+r);
+    if (hasW && hasR) return `Prev: ${stripZeros(+w)}kg × ${stripZeros(+r)}`;
+    if (hasW) return `Prev: ${stripZeros(+w)}kg`;
+    if (hasR) return `Prev: × ${stripZeros(+r)}`; // rare, but possible
+    return "Prev: —";
+  };
 
   if (wizard.movementType === "unilateral") {
     const left = document.createElement("div");
@@ -604,20 +621,22 @@ function renderSetRows() {
     for (let i = 1; i <= n; i++) {
       const rowL = document.createElement("div");
       rowL.className = "set-row";
-      const prevValL = (prev.prevL && prev.prevL[i - 1] !== "" && prev.prevL[i - 1] != null) ? prev.prevL[i - 1] : "";
+      const wL = prev.prevWL?.[i-1] ?? "";
+      const rL = prev.prevRL?.[i-1] ?? "";
       rowL.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (L)" data-side="L" data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous weight for this set">Prev: ${prevValL === "" ? "—" : stripZeros(prevValL) + "kg"}</span>
+        <span class="prev-weight" title="Previous for this set (left)">${fmtPrev(wL, rL)}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (L)" data-side="L" data-kind="weight" data-idx="${i - 1}">
       `;
       gridL.appendChild(rowL);
 
       const rowR = document.createElement("div");
       rowR.className = "set-row";
-      const prevValR = (prev.prevR && prev.prevR[i - 1] !== "" && prev.prevR[i - 1] != null) ? prev.prevR[i - 1] : "";
+      const wR = prev.prevWR?.[i-1] ?? "";
+      const rR = prev.prevRR?.[i-1] ?? "";
       rowR.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (R)" data-side="R" data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous weight for this set">Prev: ${prevValR === "" ? "—" : stripZeros(prevValR) + "kg"}</span>
+        <span class="prev-weight" title="Previous for this set (right)">${fmtPrev(wR, rR)}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (R)" data-side="R" data-kind="weight" data-idx="${i - 1}">
       `;
       gridR.appendChild(rowR);
@@ -644,10 +663,11 @@ function renderSetRows() {
     for (let i = 1; i <= n; i++) {
       const row = document.createElement("div");
       row.className = "set-row";
-      const prevVal = (prev.prev && prev.prev[i - 1] !== "" && prev.prev[i - 1] != null) ? prev.prev[i - 1] : "";
+      const w = prev.prevW?.[i-1] ?? "";
+      const r = prev.prevR?.[i-1] ?? "";
       row.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps" data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous weight for this set">Prev: ${prevVal === "" ? "—" : stripZeros(prevVal) + "kg"}</span>
+        <span class="prev-weight" title="Previous for this set">${fmtPrev(w, r)}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)" data-kind="weight" data-idx="${i - 1}">
       `;
       grid.appendChild(row);
@@ -942,7 +962,7 @@ function saveSession() {
   const musGrp = document.getElementById("muscle-select-group"); if (musGrp) musGrp.style.display = "none";
   const eqSel = document.getElementById("equipment-select"); if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
   const exSel = document.getElementById("exercise-select"); if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
-  const setsInput = document.getElementById("sets-input"); if (setsInput) setsInput.value = "3";
+  const setsInput2 = document.getElementById("sets-input"); if (setsInput2) setsInput2.value = "3";
   renderSetRows();
 
   goToStep(1);
