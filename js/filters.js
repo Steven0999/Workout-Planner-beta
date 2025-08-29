@@ -18,9 +18,10 @@
     "specific muscle"
   ];
 
-  function title(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
-  function unique(arr) { return [...new Set(arr)]; }
+  const title = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const unique = (arr) => [...new Set(arr)];
 
+  // ---------- Muscles ----------
   function allMusclesFromData() {
     const src = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
     return unique(
@@ -28,9 +29,33 @@
     ).sort((a, b) => a.localeCompare(b));
   }
 
+  function toggleMuscleVisibility(categoryValue) {
+    const group = $("#muscle-select-group");
+    if (!group) return;
+    const isSpecific = String(categoryValue || "").toLowerCase() === "specific muscle";
+    group.style.display = isSpecific ? "block" : "none";
+    if (!isSpecific) {
+      const musSel = /** @type {HTMLSelectElement} */ ($("#muscle-select"));
+      if (musSel) musSel.value = "";
+      if (window.wizard) window.wizard.muscle = "";
+    }
+  }
+
+  function ensureEnabled(el) {
+    try {
+      el.disabled = false;
+      el.style.pointerEvents = "auto";
+      el.style.opacity = "";
+    } catch {}
+  }
+
+  // ---------- Categories (Step 3) ----------
   function populateCategories() {
     const sel = /** @type {HTMLSelectElement} */ ($("#work-on-select"));
     if (!sel) return;
+
+    // Avoid duplicate re-attachments nuking value mid-change
+    sel.onchange = null;
 
     sel.innerHTML =
       `<option value="">--Select--</option>` +
@@ -43,8 +68,23 @@
       sel.value = "";
     }
 
-    // Show/hide muscle group immediately
+    ensureEnabled(sel);
     toggleMuscleVisibility(sel.value);
+
+    // Re-attach a single change handler
+    sel.addEventListener("change", () => {
+      const val = sel.value;
+      toggleMuscleVisibility(val);
+      if (window.wizard) {
+        window.wizard.category = normalizeCategory(val);
+        if (window.wizard.category !== "specific muscle") window.wizard.muscle = "";
+      }
+      // Clear downstream selects
+      const eqSel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
+      const exSel = /** @type {HTMLSelectElement} */ ($("#exercise-select"));
+      if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
+      if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+    });
   }
 
   function populateMuscles() {
@@ -61,102 +101,135 @@
     } else {
       musclesSel.value = "";
     }
+    ensureEnabled(musclesSel);
+
+    // Keep wizard in sync if user changes muscle
+    musclesSel.addEventListener("change", () => {
+      if (window.wizard) window.wizard.muscle = musclesSel.value || "";
+      // changing muscle invalidates downstream choices
+      const eqSel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
+      const exSel = /** @type {HTMLSelectElement} */ ($("#exercise-select"));
+      if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
+      if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+    });
   }
 
-  function toggleMuscleVisibility(categoryValue) {
-    const group = $("#muscle-select-group");
-    if (!group) return;
-    const isSpecific = String(categoryValue || "").toLowerCase() === "specific muscle";
-    group.style.display = isSpecific ? "block" : "none";
-    if (!isSpecific) {
-      const musSel = $("#muscle-select");
-      if (musSel) musSel.value = "";
-      if (window.wizard) window.wizard.muscle = "";
-    }
-  }
-
+  // ---------- Location filter helper ----------
   function byLocation(items, loc) {
+    // If no location picked yet, do NOT over-filter; just return all.
+    if (!loc) return items;
+
     if (loc === "home") {
       const HOME = new Set(["body weight", "resistance bands", "kettlebell"]);
       return items.filter((e) =>
         Array.isArray(e.equipment) &&
-        e.equipment.some((eq) => HOME.has(String(eq).toLowerCase()))
+        e.equipment.map(x => String(x).toLowerCase()).some((eq) => HOME.has(eq))
       );
     }
+    // gym → everything
     return items;
   }
 
+  // ---------- Equipment (Step 4) ----------
   function populateEquipment() {
-    // Called at Step 4 by wizard.js
-    const sel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
+    const sel = /** @type {HTMLSelectElement} */ (document.querySelector("#equipment-select"));
     if (!sel) return;
 
     const exData   = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
-    const location = window.wizard?.location || "";
+    const location = (window.wizard?.location || "").toLowerCase();
     const category = (window.wizard?.category || "").toLowerCase();
     const muscle   = window.wizard?.muscle || "";
 
-    // Start from location subset
+    // 1) Start from location-filtered pool (but if no location, keep all)
     let pool = byLocation(exData, location);
 
-    // Filter by category (+ muscle if "specific muscle")
+    // 2) Filter by category / specific muscle
     if (category === "specific muscle" && muscle) {
       pool = pool.filter((e) =>
         Array.isArray(e.sections) &&
-        e.sections.map((s) => String(s).toLowerCase()).includes("specific muscle") &&
+        e.sections.map(s => String(s).toLowerCase()).includes("specific muscle") &&
         Array.isArray(e.muscles) && e.muscles.includes(muscle)
       );
     } else if (category) {
       pool = pool.filter((e) =>
         Array.isArray(e.sections) &&
-        e.sections.map((s) => String(s).toLowerCase()).includes(category)
+        e.sections.map(s => String(s).toLowerCase()).includes(category)
       );
     }
 
-    const equipments = unique(
+    // 3) Collect unique equipments
+    let equipments = [...new Set(
       pool.flatMap((e) =>
-        Array.isArray(e.equipment) ? e.equipment.map((x) => String(x).toLowerCase()) : []
+        Array.isArray(e.equipment) ? e.equipment.map(x => String(x).toLowerCase()) : []
       )
-    ).sort((a, b) => a.localeCompare(b));
+    )].sort((a, b) => a.localeCompare(b));
 
+    // 4) Defensive fallback if empty
+    if (equipments.length === 0) {
+      console.warn("[filters] No equipment matched filters. Using fallback list.");
+      equipments = [
+        "barbell","dumbbell","cable machine","machine","body weight",
+        "resistance bands","kettlebell","smith machine"
+      ];
+    }
+
+    // 5) Populate <select>
     sel.innerHTML =
       `<option value="">--Select--</option>` +
       equipments.map((eq) => `<option value="${eq}">${title(eq)}</option>`).join("");
 
-    // Restore selection if still available
+    // Restore previously chosen equipment if still valid
     if (window.wizard?.equipment && equipments.includes(window.wizard.equipment)) {
       sel.value = window.wizard.equipment;
     } else {
       sel.value = "";
     }
 
-    // Clear exercises (Step 5 repopulates)
-    const exSel = $("#exercise-select");
+    // Make sure it is usable
+    sel.disabled = false;
+    sel.style.pointerEvents = "auto";
+
+    // Clear exercise list (Step 5 will repopulate)
+    const exSel = /** @type {HTMLSelectElement} */ (document.querySelector("#exercise-select"));
     if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+
+    // Small debug to help verify state
+    console.log(`[filters] Equipment options: ${equipments.length} (loc=${location||"n/a"}, cat=${category||"n/a"}, mus=${muscle||"n/a"})`);
   }
 
-  // Expose to global
+  // ---------- Normalizer ----------
+  function normalizeCategory(c0) {
+    const c = String(c0 || "").toLowerCase().trim();
+    if (c === "upper") return "upper body";
+    if (c === "lower" || c === "legs") return "lower body";
+    return c;
+  }
+
+  // ---------- Expose ----------
   window.populateCategories = populateCategories;
   window.populateMuscles = populateMuscles;
   window.populateEquipment = populateEquipment;
   window.toggleMuscleVisibility = toggleMuscleVisibility;
+  window.normalizeCategory = normalizeCategory;
 
-  // First-time init after DOM loads
+  // ---------- First-time init after DOM loads ----------
   document.addEventListener("DOMContentLoaded", () => {
+    // Try immediately…
     populateCategories();
     populateMuscles();
 
-    // Keep muscle group synced if user changes the category early
-    const catSel = $("#work-on-select");
-    if (catSel) {
-      catSel.addEventListener("change", () => {
-        toggleMuscleVisibility(catSel.value);
-        // Clear downstream selects
-        const eqSel = $("#equipment-select");
-        const exSel = $("#exercise-select");
-        if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
-        if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
-      });
-    }
+    // …and re-try shortly in case exercises.js loaded just after this
+    setTimeout(() => {
+      const catSel = $("#work-on-select");
+      if (catSel && catSel.options.length <= 1) {
+        console.warn("[filters] Retrying category populate (first attempt was empty).");
+        populateCategories();
+      }
+      const musSel = $("#muscle-select");
+      if (musSel && musSel.options.length <= 1) {
+        console.warn("[filters] Retrying muscle populate (first attempt was empty).");
+        populateMuscles();
+      }
+    }, 50);
   });
 })();
