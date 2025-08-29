@@ -1,237 +1,313 @@
+// js/wizard.js
+// Central step navigator + validation + wiring to other modules (filters, sets, session, history)
+
+/* global functions expected (provided by other files):
+   - populateEquipment()            // filters.js
+   - populateExercises()            // sets.js
+   - renderSetRows()                // sets.js
+   - initSetsStep()                 // sets.js
+   - buildSessionSummary()          // session.js (or wherever you put it)
+   - updateReviewButtonState()      // main.js (or session UI)
+   - saveSession()                  // session.js
+   - populateHistoryDropdown()      // history.js
+   - displayExerciseHistory()       // history.js
+*/
+
 (function () {
-  const App = (window.App = window.App || {});
-  const { q, setOptions, title, nowIsoMinute } = App.utils;
-  const { EXERCISES, allCategories, allMuscles, byLocation, byCategoryAndMuscle } = App.data;
-  const { populateCategories, populateMuscles, populateEquipment } = App.filters;
-  const { renderSetRows } = App.sets;
-  const { wireExerciseSearch } = App.search;
-
-  // Global state
-  App.state = App.state || {};
-  App.state.userWorkoutData = App.state.userWorkoutData || App.utils.loadData();
-  App.state.currentWorkoutExercises = App.state.currentWorkoutExercises || [];
-
-  const wizard = (App.state.wizard = App.state.wizard || {
-    step: 1,
-    location: "",
-    timing: "now",
-    datetime: nowIsoMinute(),
-    category: "",
-    muscle: "",
-    equipment: "",
-    exercise: "",
-    movementType: "bilateral",
+  // ========= Global wizard state used across modules =========
+  // (If you already define window.wizard elsewhere, this keeps/extends it.)
+  window.wizard = Object.assign({
+    location: "",            // "gym" | "home"
+    timing: "now",           // "now" | "past"
+    datetime: new Date().toISOString().slice(0, 16),
+    category: "",            // e.g., "push", "pull", "upper body", "specific muscle"
+    muscle: "",              // only when category === "specific muscle"
+    equipment: "",           // e.g., "barbell", "dumbbell"
+    exercise: "",            // picked exercise name
+    movementType: "bilateral", // "bilateral" | "unilateral"
     sets: 3
-  });
+  }, window.wizard || {});
 
+  // ========= Local navigation state =========
+  window.currentStep = window.currentStep || 1;
   let lastLoggerStep = 1;
+  const pageScroll = { logger: 0, history: 0 };
 
-  function goToStep(step) {
-    wizard.step = step;
+  // ========= DOM helpers =========
+  const $ = (sel) => document.querySelector(sel);
+  const setVisibleStep = (step) => {
     document.querySelectorAll(".wizard-step").forEach((el, idx) => {
-      el.style.display = idx === step - 1 ? "block" : "none";
+      el.style.display = (idx === step - 1) ? "block" : "none";
     });
     document.querySelectorAll(".step-badge").forEach((b) => {
       b.classList.toggle("active", Number(b.dataset.step) === step);
     });
+    const prevBtn = $("#prev-btn");
+    if (prevBtn) prevBtn.disabled = (step === 1);
+  };
 
-    if (step === 4) populateEquipment();
-    if (step === 5) populateExercisesAndWiring();
-    if (step === 6) App.session.buildSessionSummary();
+  // ========= Step transitions =========
+  function goToStep(step) {
+    window.currentStep = step;
+    setVisibleStep(step);
 
-    App.session.updateReviewButtonState();
+    // Enter-step hooks
+    if (step === 4 && typeof window.populateEquipment === "function") {
+      window.populateEquipment();
+    }
+    if (step === 5) {
+      if (typeof window.initSetsStep === "function") window.initSetsStep();
+      if (typeof window.populateExercises === "function") window.populateExercises();
+      if (typeof window.renderSetRows === "function") window.renderSetRows();
+    }
+    if (step === 6 && typeof window.buildSessionSummary === "function") {
+      window.buildSessionSummary();
+    }
+
+    if (typeof window.updateReviewButtonState === "function") {
+      window.updateReviewButtonState();
+    }
   }
 
-  // Step validations
-  function validateStep(step) {
-    if (step === 1) {
-      const v = q("#workout-type-select").value;
-      if (!v) { q("#s1-hint").textContent = "Please select where you are training."; return false; }
-      q("#s1-hint").textContent = "";
-      wizard.location = v;
-      return true;
-    }
-    if (step === 2) {
-      const selected = document.querySelector('input[name="timing"]:checked');
-      if (!selected) { q("#s2-hint").textContent = "Select session timing."; return false; }
-      wizard.timing = selected.value;
-      if (wizard.timing === "now") {
-        const dt = q("#workout-datetime");
-        dt.value = nowIsoMinute();
-        dt.setAttribute("disabled", "disabled");
-        wizard.datetime = dt.value;
-      } else {
-        const dt = q("#workout-datetime").value;
-        if (!dt) { q("#s2-hint").textContent = "Pick date/time for past session."; return false; }
-        wizard.datetime = dt;
-        q("#workout-datetime").removeAttribute("disabled");
-      }
-      q("#s2-hint").textContent = "";
-      return true;
-    }
-    if (step === 3) {
-      const cat = q("#work-on-select").value;
-      if (!cat) { q("#s3-hint").textContent = "Please select what you're training."; return false; }
-      wizard.category = cat;
-      if (cat === "specific muscle") {
-        const mus = q("#muscle-select").value;
-        if (!mus) { q("#s3-hint").textContent = "Please choose a specific muscle."; return false; }
-        wizard.muscle = mus;
-      } else {
-        wizard.muscle = "";
-      }
-      q("#s3-hint").textContent = "";
-      return true;
-    }
-    if (step === 4) {
-      const eq = q("#equipment-select").value;
-      if (!eq) { q("#s4-hint").textContent = "Please select the machine/equipment."; return false; }
-      wizard.equipment = eq; q("#s4-hint").textContent = "";
-      return true;
-    }
-    return true;
+  function prevStep() {
+    if (window.currentStep > 1) goToStep(window.currentStep - 1);
   }
 
   function nextStep() {
-    if (wizard.step < 5) {
-      if (!validateStep(wizard.step)) return;
-      goToStep(wizard.step + 1);
+    // Steps 1–4 require validation before advancing
+    if (window.currentStep < 5) {
+      if (!validateAndStore(window.currentStep)) return;
+      goToStep(window.currentStep + 1);
       return;
     }
-    if (wizard.step === 5) {
-      if (App.state.currentWorkoutExercises.length === 0) {
-        q("#s5-hint").textContent = "Please add at least one exercise before reviewing your session.";
+
+    // Step 5: require at least one exercise added before Review
+    if (window.currentStep === 5) {
+      const hasItems = Array.isArray(window.currentWorkoutExercises) && window.currentWorkoutExercises.length > 0;
+      if (!hasItems) {
+        const hint = $("#s5-hint");
+        if (hint) hint.textContent = "Please add at least one exercise before reviewing your session.";
         return;
       }
       goToStep(6);
       return;
     }
-    App.session.saveSession();
-  }
-  function prevStep() {
-    if (wizard.step > 1) goToStep(wizard.step - 1);
-  }
 
-  // Populate exercises for step 5 + wire search + movement type + sets count
-  function populateExercisesAndWiring() {
-    const exerciseSel = q("#exercise-select");
-    const pool = byLocation(EXERCISES, wizard.location);
-    const filtered = byCategoryAndMuscle(pool, wizard.category, wizard.muscle)
-      .filter((e) => wizard.equipment ? e.equipment.includes(wizard.equipment) : true);
-
-    const names = [...new Set(filtered.map((e) => e.name))].sort((a, b) => a.localeCompare(b));
-    setOptions(exerciseSel, ["--Select--", ...names], (v) => ({
-      value: v === "--Select--" ? "" : v,
-      text: v
-    }));
-    exerciseSel.value = wizard.exercise || "";
-
-    // Wire exercise search
-    App.search.wireExerciseSearch();
-
-    // Wire movement type
-    const typeSel = q("#movement-type-select");
-    typeSel.value = wizard.movementType || "bilateral";
-    typeSel.onchange = () => { wizard.movementType = typeSel.value; renderSetRows(); };
-
-    // Wire sets input
-    const setsInput = q("#sets-input");
-    setsInput.value = wizard.sets || 3;
-    setsInput.onchange = () => {
-      wizard.sets = Math.max(1, App.utils.toInt(setsInput.value, 1));
-      renderSetRows();
-    };
-
-    // Show insights
-    showExerciseInsights(exerciseSel.value);
-
-    // Change exercise
-    exerciseSel.onchange = () => {
-      wizard.exercise = exerciseSel.value;
-      showExerciseInsights(wizard.exercise);
-      renderSetRows();
-    };
-
-    // Initial render of sets grid
-    renderSetRows();
+    // Step 6: Save
+    if (typeof window.saveSession === "function") {
+      window.saveSession();
+    }
   }
 
-  function showExerciseInsights(name) {
-    const node = q("#exercise-insights");
-    if (!node) return;
-    if (!name) { node.textContent = ""; return; }
+  // ========= Validation =========
+  function validateAndStore(step) {
+    switch (step) {
+      case 1: return validateStep1();
+      case 2: return validateStep2();
+      case 3: return validateStep3();
+      case 4: return validateStep4();
+      case 5: return validateStep5();
+      default: return true;
+    }
+  }
 
-    // Last
-    const recs = (App.state.userWorkoutData[name]?.records || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-    const last = recs[0] || null;
+  function validateStep1() {
+    const val = $("#workout-type-select")?.value || "";
+    const hint = $("#s1-hint");
+    if (!val) {
+      if (hint) hint.textContent = "Please select where you are training.";
+      return false;
+    }
+    if (hint) hint.textContent = "";
+    window.wizard.location = val;
+    return true;
+  }
 
-    // Best
-    const bestW = App.state.userWorkoutData[name]?.bestWeight ?? null;
-    let best = null;
-    if (bestW != null) {
-      const asc = recs.slice().reverse();
-      const hit = asc.find((r) => r.maxWeight === bestW);
-      if (hit) best = hit;
+  function validateStep2() {
+    const hint = $("#s2-hint");
+    const checked = document.querySelector('input[name="timing"]:checked');
+    if (!checked) {
+      if (hint) hint.textContent = "Please select session timing.";
+      return false;
     }
 
-    function heaviestWithReps(r) {
-      if (!r) return null;
-      let weights = [], reps = [];
-      if (Array.isArray(r.setWeightsL) || Array.isArray(r.setWeightsR)) {
-        const L = r.setWeightsL || [], R = r.setWeightsR || [];
-        const RL = r.setRepsL || Array(L.length).fill(null);
-        const RR = r.setRepsR || Array(R.length).fill(null);
-        weights = [...L, ...R];
-        reps = [...RL, ...RR];
-      } else if (Array.isArray(r.setWeights)) {
-        weights = r.setWeights;
-        reps = r.setReps || Array(weights.length).fill(null);
+    window.wizard.timing = checked.value; // "now" | "past"
+    if (window.wizard.timing === "now") {
+      // lock datetime to now and disable input
+      window.wizard.datetime = new Date().toISOString().slice(0, 16);
+      const dt = $("#workout-datetime");
+      if (dt) {
+        dt.value = window.wizard.datetime;
+        dt.setAttribute("disabled", "disabled");
       }
-      if (weights.length === 0) return { w: r.maxWeight ?? 0, reps: null, date: r.date };
-      const max = Math.max(...weights);
-      const idx = weights.findIndex((x) => x === max);
-      return { w: max, reps: (idx >= 0 ? reps[idx] : null), date: r.date };
+      if (hint) hint.textContent = "";
+      return true;
     }
 
-    const lastInfo = heaviestWithReps(last);
-    const bestInfo = best ? heaviestWithReps(best) : (bestW != null ? { w: bestW, reps: null, date: best?.date || null } : null);
-
-    const parts = [];
-    if (lastInfo) {
-      parts.push(`Last: <strong>${App.utils.stripZeros(lastInfo.w)} kg</strong>${lastInfo.reps != null ? ` × <strong>${App.utils.stripZeros(lastInfo.reps)}</strong>` : ""} (${new Date(lastInfo.date).toLocaleDateString()})`);
-    } else {
-      parts.push(`Last: <em>no history</em>`);
+    // Past: must have a date/time
+    const dtVal = $("#workout-datetime")?.value || "";
+    if (!dtVal) {
+      if (hint) hint.textContent = "Pick the date/time for your past session.";
+      return false;
     }
-    if (bestInfo) {
-      parts.push(`Heaviest: <strong>${App.utils.stripZeros(bestInfo.w)} kg</strong>${bestInfo.reps != null ? ` × <strong>${App.utils.stripZeros(bestInfo.reps)}</strong>` : ""}${bestInfo.date ? ` (${new Date(bestInfo.date).toLocaleDateString()})` : ""}`);
-    } else {
-      parts.push(`Heaviest: <em>no history</em>`);
-    }
-    node.innerHTML = parts.join(" &nbsp;•&nbsp; ");
+    window.wizard.datetime = dtVal;
+    const dt = $("#workout-datetime");
+    if (dt) dt.removeAttribute("disabled");
+    if (hint) hint.textContent = "";
+    return true;
   }
 
+  function validateStep3() {
+    const hint = $("#s3-hint");
+    const categoryRaw = $("#work-on-select")?.value || "";
+    if (!categoryRaw) {
+      if (hint) hint.textContent = "Please select what you are training.";
+      return false;
+    }
+    window.wizard.category = normalizeCategory(categoryRaw);
+
+    if (window.wizard.category === "specific muscle") {
+      const mus = $("#muscle-select")?.value || "";
+      if (!mus) {
+        if (hint) hint.textContent = "Please choose a specific muscle.";
+        return false;
+      }
+      window.wizard.muscle = mus;
+    } else {
+      window.wizard.muscle = "";
+    }
+
+    if (hint) hint.textContent = "";
+    return true;
+  }
+
+  function validateStep4() {
+    const hint = $("#s4-hint");
+    const eq = $("#equipment-select")?.value || "";
+    if (!eq) {
+      if (hint) hint.textContent = "Please select the machine/equipment.";
+      return false;
+    }
+    window.wizard.equipment = eq;
+    if (hint) hint.textContent = "";
+    return true;
+  }
+
+  // Step 5’s detailed field validation is handled inside sets.js when adding an exercise,
+  // but we still allow Next → Review only when session has items (enforced in nextStep()).
+  function validateStep5() { return true; }
+
+  // ========= Normalizers / helpers =========
+  function normalizeCategory(c0) {
+    const c = String(c0 || "").toLowerCase().trim();
+    if (c === "upper") return "upper body";
+    if (c === "lower" || c === "legs") return "lower body";
+    return c;
+  }
+
+  // ========= Public navigation between Logger ↔ History (optional, if you use header buttons) =========
   function showHistoryView() {
-    lastLoggerStep = wizard.step || lastLoggerStep;
+    lastLoggerStep = window.currentStep || lastLoggerStep;
+    pageScroll.logger = document.scrollingElement.scrollTop;
+
     document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
-    q("#workout-history").classList.add("active");
-    q("#to-history").style.display = "none";
-    q("#to-logger").style.display = "inline-block";
-    App.history.populateHistoryDropdown();
-  }
-  function showLoggerView() {
-    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
-    q("#workout-logger").classList.add("active");
-    q("#to-logger").style.display = "none";
-    q("#to-history").style.display = "inline-block";
-    goToStep(lastLoggerStep);
-    App.session.updateReviewButtonState();
+    $("#workout-history")?.classList.add("active");
+
+    if (typeof window.populateHistoryDropdown === "function") {
+      window.populateHistoryDropdown();
+    }
+
+    requestAnimationFrame(() => {
+      document.scrollingElement.scrollTop = pageScroll.history || 0;
+    });
   }
 
-  App.wizard = {
-    goToStep, nextStep, prevStep,
-    showHistoryView, showLoggerView,
-    populateExercisesAndWiring,
-    populateCategories, populateMuscles, populateEquipment,
-    wizard
-  };
+  function showLoggerView() {
+    pageScroll.history = document.scrollingElement.scrollTop;
+
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    $("#workout-logger")?.classList.add("active");
+
+    goToStep(lastLoggerStep);
+
+    requestAnimationFrame(() => {
+      document.scrollingElement.scrollTop = pageScroll.logger || 0;
+    });
+
+    if (typeof window.updateReviewButtonState === "function") {
+      window.updateReviewButtonState();
+    }
+  }
+
+  // ========= Wire up buttons on DOM ready =========
+  document.addEventListener("DOMContentLoaded", () => {
+    // Next / Prev
+    $("#next-btn")?.addEventListener("click", nextStep);
+    $("#prev-btn")?.addEventListener("click", prevStep);
+
+    // Header navigation (if present)
+    $("#to-history")?.addEventListener("click", showHistoryView);
+    $("#to-logger")?.addEventListener("click", showLoggerView);
+
+    // Timing radios init
+    document.querySelectorAll('input[name="timing"]').forEach((r) => {
+      r.addEventListener("change", (e) => {
+        const v = e.target.value;
+        const dateInput = /** @type {HTMLInputElement} */ ($("#workout-datetime"));
+        if (!dateInput) return;
+        if (v === "now") {
+          window.wizard.timing = "now";
+          window.wizard.datetime = new Date().toISOString().slice(0, 16);
+          dateInput.value = window.wizard.datetime;
+          dateInput.setAttribute("disabled", "disabled");
+        } else {
+          window.wizard.timing = "past";
+          dateInput.removeAttribute("disabled");
+        }
+      });
+    });
+
+    // Category change → show/hide muscle group
+    $("#work-on-select")?.addEventListener("change", () => {
+      const cat = normalizeCategory($("#work-on-select").value);
+      const group = $("#muscle-select-group");
+      if (group) group.style.display = (cat === "specific muscle") ? "block" : "none";
+      // reset down-stream when category changes
+      const eqSel = $("#equipment-select");
+      const exSel = $("#exercise-select");
+      if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
+      if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+      window.wizard.category = cat;
+      window.wizard.muscle = "";
+    });
+
+    // Muscle change → clear downstream
+    $("#muscle-select")?.addEventListener("change", () => {
+      const eqSel = $("#equipment-select");
+      const exSel = $("#exercise-select");
+      if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
+      if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+      window.wizard.muscle = $("#muscle-select").value || "";
+    });
+
+    // Default timing to "now"
+    const nowRadio = document.querySelector('input[name="timing"][value="now"]');
+    if (nowRadio) nowRadio.checked = true;
+    const dt = $("#workout-datetime");
+    if (dt) {
+      dt.value = window.wizard.datetime;
+      dt.setAttribute("disabled", "disabled");
+    }
+
+    // Start at step 1
+    goToStep(window.currentStep || 1);
+  });
+
+  // ========= Expose to global (if needed elsewhere) =========
+  window.goToStep = goToStep;
+  window.prevStep = prevStep;
+  window.nextStep = nextStep;
+  window.showHistoryView = showHistoryView;
+  window.showLoggerView = showLoggerView;
+  window.validateAndStore = validateAndStore;
 })();
