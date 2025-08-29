@@ -1,25 +1,16 @@
 /* =======================================================================
    sets.js
-   Responsibilities:
-     • Build the set-entry grids for Bilateral / Unilateral
-     • Show per-set "Prev" markers (weight × reps) from last session
-     • Validate & read current inputs into the wizard
-     • Add the configured exercise to the in-session list
-   Depends on globals provided elsewhere:
-     - wizard (object with step-5 state, e.g. exercise, movementType, sets, etc.)
-     - userWorkoutData (history store)
-     - currentWorkoutExercises (array)
+   Builds the Step 5 sets UI, shows per-set "Prev: 50kg × 10" markers,
+   validates & reads inputs, and adds the exercise to the session—without
+   clearing the user’s current selection (exercise / unilateral / sets).
+   Depends on:
+     - wizard, userWorkoutData, currentWorkoutExercises
      - renderCurrentWorkoutList(), updateReviewButtonState()
-     - getExerciseRecordsDesc(exName)  // from history/data helpers
-     - title(), toInt(), toFloat()     // small utils
+     - getExerciseRecordsDesc(), showExerciseInsights()
+     - toInt(), toFloat(), isFiniteNum(), trimZeros()
 ======================================================================= */
 
-/* -----------------------------------------------------------------------
-   computePrevPerSet(exName, movementType, setsCount)
-   Returns per-set previous strings (“50kg × 10”) for last session.
-   • Bilateral:   { prev:  [ "Wkg × R", ... ] }
-   • Unilateral:  { prevL: [ "Wkg × R", ... ], prevR: [ "Wkg × R", ... ] }
------------------------------------------------------------------------- */
+/* ---------- Prev markers (weight × reps) pulled from LAST record ---------- */
 window.computePrevPerSet = function computePrevPerSet(exName, movementType, setsCount) {
   const blanks = Array(setsCount).fill("");
 
@@ -49,61 +40,57 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
     const prevL = blanks.slice();
     const prevR = blanks.slice();
 
-    // Prefer true L/R history first
-    if (Array.isArray(last.setWeightsL) && Array.isArray(last.setRepsL)) {
+    // Prefer true L/R arrays if present
+    if (Array.isArray(last.setWeightsL) || Array.isArray(last.setRepsL)) {
       for (let i = 0; i < setsCount; i++) {
-        const w = i < last.setWeightsL.length ? last.setWeightsL[i] : null;
-        const r = i < last.setRepsL.length    ? last.setRepsL[i]    : null;
+        const w = Array.isArray(last.setWeightsL) ? last.setWeightsL[i] : null;
+        const r = Array.isArray(last.setRepsL) ? last.setRepsL[i] : null;
         const s = pairWR(w, r);
         if (s) prevL[i] = s;
       }
     }
-    if (Array.isArray(last.setWeightsR) && Array.isArray(last.setRepsR)) {
+    if (Array.isArray(last.setWeightsR) || Array.isArray(last.setRepsR)) {
       for (let i = 0; i < setsCount; i++) {
-        const w = i < last.setWeightsR.length ? last.setWeightsR[i] : null;
-        const r = i < last.setRepsR.length    ? last.setRepsR[i]    : null;
+        const w = Array.isArray(last.setWeightsR) ? last.setWeightsR[i] : null;
+        const r = Array.isArray(last.setRepsR) ? last.setRepsR[i] : null;
         const s = pairWR(w, r);
         if (s) prevR[i] = s;
       }
     }
 
-    // If no L/R arrays, mirror bilateral to both sides
+    // Fallback: mirror bilateral history to both sides
     if (prevL.every(v => v === "") && prevR.every(v => v === "")) {
-      if (Array.isArray(last.setWeights) && Array.isArray(last.setReps)) {
+      if (Array.isArray(last.setWeights) || Array.isArray(last.setReps)) {
         for (let i = 0; i < setsCount; i++) {
-          const w = i < last.setWeights.length ? last.setWeights[i] : null;
-          const r = i < last.setReps.length    ? last.setReps[i]    : null;
+          const w = Array.isArray(last.setWeights) ? last.setWeights[i] : null;
+          const r = Array.isArray(last.setReps) ? last.setReps[i] : null;
           const s = pairWR(w, r);
           if (s) { prevL[i] = s; prevR[i] = s; }
         }
-      } else if (typeof last.maxWeight === "number" && Number.isFinite(last.maxWeight)) {
+      } else if (isFiniteNum(last.maxWeight)) {
         const s = `${trimZeros(last.maxWeight)}kg`;
-        for (let i = 0; i < setsCount; i++) { prevL[i] = s; prevR[i] = s; }
+        prevL.fill(s); prevR.fill(s);
       }
     }
-
     return { prevL, prevR };
   }
 
   // Bilateral
   const prev = blanks.slice();
-  if (Array.isArray(last.setWeights) && Array.isArray(last.setReps)) {
+  if (Array.isArray(last.setWeights) || Array.isArray(last.setReps)) {
     for (let i = 0; i < setsCount; i++) {
-      const w = i < last.setWeights.length ? last.setWeights[i] : null;
-      const r = i < last.setReps.length    ? last.setReps[i]    : null;
+      const w = Array.isArray(last.setWeights) ? last.setWeights[i] : null;
+      const r = Array.isArray(last.setReps) ? last.setReps[i] : null;
       const s = pairWR(w, r);
       if (s) prev[i] = s;
     }
-  } else if (
-    (Array.isArray(last.setWeightsL) && Array.isArray(last.setRepsL)) ||
-    (Array.isArray(last.setWeightsR) && Array.isArray(last.setRepsR))
-  ) {
-    // Last was unilateral — take heavier side (and its reps) at each index
+  } else if (Array.isArray(last.setWeightsL) || Array.isArray(last.setWeightsR)) {
+    // If last was unilateral, choose heavier side (and its reps) per index
     for (let i = 0; i < setsCount; i++) {
-      const wL = Array.isArray(last.setWeightsL) && i < last.setWeightsL.length ? last.setWeightsL[i] : null;
-      const rL = Array.isArray(last.setRepsL)    && i < last.setRepsL.length    ? last.setRepsL[i]    : null;
-      const wR = Array.isArray(last.setWeightsR) && i < last.setWeightsR.length ? last.setWeightsR[i] : null;
-      const rR = Array.isArray(last.setRepsR)    && i < last.setRepsR.length    ? last.setRepsR[i]    : null;
+      const wL = Array.isArray(last.setWeightsL) ? last.setWeightsL[i] : null;
+      const rL = Array.isArray(last.setRepsL) ? last.setRepsL[i] : null;
+      const wR = Array.isArray(last.setWeightsR) ? last.setWeightsR[i] : null;
+      const rR = Array.isArray(last.setRepsR) ? last.setRepsR[i] : null;
 
       let w = null, r = null;
       if (isFiniteNum(wL) && isFiniteNum(wR)) { w = Math.max(wL, wR); r = (w === wL ? rL : rR); }
@@ -113,24 +100,20 @@ window.computePrevPerSet = function computePrevPerSet(exName, movementType, sets
       const s = pairWR(w, r);
       if (s) prev[i] = s;
     }
-  } else if (typeof last.maxWeight === "number" && Number.isFinite(last.maxWeight)) {
+  } else if (isFiniteNum(last.maxWeight)) {
     const s = `${trimZeros(last.maxWeight)}kg`;
-    for (let i = 0; i < setsCount; i++) prev[i] = s;
+    prev.fill(s);
   }
-
   return { prev };
 };
 
-/* -----------------------------------------------------------------------
-   renderSetRows()
-   Builds the input grids for sets (and shows "Prev: …" markers).
------------------------------------------------------------------------- */
+/* --------------------------- Render the rows --------------------------- */
 window.renderSetRows = function renderSetRows() {
   const setsInputEl = document.getElementById("sets-input");
   const n = Math.max(1, toInt(setsInputEl?.value ?? 1, 1));
   wizard.sets = n;
 
-  // Ensure container exists
+  // Ensure container
   let container = document.getElementById("sets-grids-wrapper");
   if (!container) {
     container = document.createElement("div");
@@ -140,7 +123,7 @@ window.renderSetRows = function renderSetRows() {
   }
   container.innerHTML = "";
 
-  // Compute last-session per-set markers
+  // Prev markers
   const prev = window.computePrevPerSet(wizard.exercise, wizard.movementType, n);
 
   if (wizard.movementType === "unilateral") {
@@ -149,16 +132,16 @@ window.renderSetRows = function renderSetRows() {
     leftBlock.className = "form-group";
     leftBlock.innerHTML = `<label>Left Side — Reps & Weight</label><div id="sets-grid-left" class="sets-grid"></div>`;
     container.appendChild(leftBlock);
-
     const gridL = leftBlock.querySelector("#sets-grid-left");
+
     for (let i = 1; i <= n; i++) {
+      const prevValL = (prev.prevL && prev.prevL[i - 1]) ? prev.prevL[i - 1] : "";
       const rowL = document.createElement("div");
       rowL.className = "set-row";
-      const prevValL = (prev.prevL && prev.prevL[i - 1]) ? prev.prevL[i - 1] : "";
       rowL.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (L)"
                data-side="L" data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous for this set">Prev: ${prevValL || "—"}</span>
+        <span class="prev-weight">Prev: ${prevValL || "—"}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (L)"
                data-side="L" data-kind="weight" data-idx="${i - 1}">
       `;
@@ -170,23 +153,23 @@ window.renderSetRows = function renderSetRows() {
     rightBlock.className = "form-group";
     rightBlock.innerHTML = `<label>Right Side — Reps & Weight</label><div id="sets-grid-right" class="sets-grid"></div>`;
     container.appendChild(rightBlock);
-
     const gridR = rightBlock.querySelector("#sets-grid-right");
+
     for (let i = 1; i <= n; i++) {
+      const prevValR = (prev.prevR && prev.prevR[i - 1]) ? prev.prevR[i - 1] : "";
       const rowR = document.createElement("div");
       rowR.className = "set-row";
-      const prevValR = (prev.prevR && prev.prevR[i - 1]) ? prev.prevR[i - 1] : "";
       rowR.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps (R)"
                data-side="R" data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous for this set">Prev: ${prevValR || "—"}</span>
+        <span class="prev-weight">Prev: ${prevValR || "—"}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg) (R)"
                data-side="R" data-kind="weight" data-idx="${i - 1}">
       `;
       gridR.appendChild(rowR);
     }
 
-    // Prefill from wizard if editing
+    // Prefill if editing
     if (wizard.setRepsL?.length === n && wizard.setWeightsL?.length === n) {
       [...gridL.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setRepsL[i] ?? "");
       [...gridL.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeightsL[i] ?? "");
@@ -202,23 +185,23 @@ window.renderSetRows = function renderSetRows() {
     single.className = "form-group";
     single.innerHTML = `<label>Reps & Weight</label><div id="sets-grid" class="sets-grid"></div>`;
     container.appendChild(single);
-
     const grid = single.querySelector("#sets-grid");
+
     for (let i = 1; i <= n; i++) {
+      const prevVal = (prev.prev && prev.prev[i - 1]) ? prev.prev[i - 1] : "";
       const row = document.createElement("div");
       row.className = "set-row";
-      const prevVal = (prev.prev && prev.prev[i - 1]) ? prev.prev[i - 1] : "";
       row.innerHTML = `
         <input type="number" min="1" step="1" placeholder="Set ${i}: Reps"
                data-kind="reps" data-idx="${i - 1}">
-        <span class="prev-weight" title="Previous for this set">Prev: ${prevVal || "—"}</span>
+        <span class="prev-weight">Prev: ${prevVal || "—"}</span>
         <input type="number" min="0" step="0.5" placeholder="Set ${i}: Weight (kg)"
                data-kind="weight" data-idx="${i - 1}">
       `;
       grid.appendChild(row);
     }
 
-    // Prefill from wizard if editing
+    // Prefill if editing
     if (wizard.setReps?.length === n && wizard.setWeights?.length === n) {
       [...grid.querySelectorAll('[data-kind="reps"]')].forEach((el, i) => el.value = wizard.setReps[i] ?? "");
       [...grid.querySelectorAll('[data-kind="weight"]')].forEach((el, i) => el.value = wizard.setWeights[i] ?? "");
@@ -226,10 +209,7 @@ window.renderSetRows = function renderSetRows() {
   }
 };
 
-/* -----------------------------------------------------------------------
-   readSetsIntoWizard()
-   Reads the visible grid inputs into wizard.* arrays and computes max.
------------------------------------------------------------------------- */
+/* ---------------------- Read grid → wizard + compute max ---------------------- */
 function readSetsIntoWizard() {
   const n = Math.max(1, toInt(document.getElementById("sets-input")?.value ?? 1, 1));
   wizard.sets = n;
@@ -266,10 +246,7 @@ function readSetsIntoWizard() {
   wizard.maxWeightSetCount = wts.filter(w => w === wizard.maxWeight).length || 0;
 }
 
-/* -----------------------------------------------------------------------
-   validateCurrentSetGrid()
-   Ensures all visible rows have valid reps/weight before adding.
------------------------------------------------------------------------- */
+/* -------------------------- Validate visible grid -------------------------- */
 function validateCurrentSetGrid() {
   const hint = document.getElementById("s5-hint");
   const n = Math.max(1, toInt(document.getElementById("sets-input")?.value ?? 1, 1));
@@ -313,18 +290,11 @@ function validateCurrentSetGrid() {
   return true;
 }
 
-/* -----------------------------------------------------------------------
-   addExerciseToWorkout()
-   Reads the grid → pushes a normalized exercise object to the session list.
-   IMPORTANT CHANGE:
-   - We **do not** clear the selected exercise or movement type anymore.
-   - We just clear the input fields and re-render so the grid stays visible,
-     and Prev markers keep showing for the same exercise.
------------------------------------------------------------------------- */
+/* ----------------------------- Add to session ----------------------------- */
 window.addExerciseToWorkout = function addExerciseToWorkout() {
   if (!validateCurrentSetGrid()) return;
 
-  // Pull inputs into wizard.* and compute max
+  // Read inputs into wizard & compute max
   readSetsIntoWizard();
 
   const ex = {
@@ -336,17 +306,12 @@ window.addExerciseToWorkout = function addExerciseToWorkout() {
     muscle: wizard.category === "specific muscle" ? wizard.muscle : null,
     movementType: wizard.movementType,
     sets: wizard.sets,
-
-    // Bilateral
     setReps: (wizard.setReps || []).slice(),
     setWeights: (wizard.setWeights || []).slice(),
-
-    // Unilateral
     setRepsL: (wizard.setRepsL || []).slice(),
     setWeightsL: (wizard.setWeightsL || []).slice(),
     setRepsR: (wizard.setRepsR || []).slice(),
     setWeightsR: (wizard.setWeightsR || []).slice(),
-
     maxWeight: wizard.maxWeight,
     maxWeightSetCount: wizard.maxWeightSetCount
   };
@@ -355,27 +320,21 @@ window.addExerciseToWorkout = function addExerciseToWorkout() {
   renderCurrentWorkoutList();
   updateReviewButtonState();
 
-  // --- Keep the exercise & movement type selected ---
-  // Clear only the inputs (so user can log another set or same exercise cleanly)
+  // IMPORTANT: Keep selection. Only clear input arrays & re-render.
   wizard.setReps = []; wizard.setWeights = [];
   wizard.setRepsL = []; wizard.setWeightsL = [];
   wizard.setRepsR = []; wizard.setWeightsR = [];
   wizard.maxWeight = 0; wizard.maxWeightSetCount = 0;
 
-  // Re-render rows; since wizard.exercise is still set,
-  // Prev markers will continue to show for this exercise.
-  renderSetRows();
+  renderSetRows(); // stays visible with Prev for the same exercise
 
-  // Keep "insights" visible for this exercise (if you show that box)
-  const insights = document.getElementById("exercise-insights");
-  if (insights && typeof showExerciseInsights === "function") {
+  const info = document.getElementById("exercise-insights");
+  if (info && typeof showExerciseInsights === "function") {
     showExerciseInsights(wizard.exercise);
   }
 };
 
-/* -----------------------------------------------------------------------
-   Utilities (local)
------------------------------------------------------------------------- */
+/* ------------------------------ Small utils ------------------------------ */
 function isFiniteNum(x){ return typeof x === "number" && Number.isFinite(x); }
 function trimZeros(n){
   if (!isFiniteNum(n)) return n;
@@ -383,4 +342,4 @@ function trimZeros(n){
   return s.includes(".")
     ? s.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1")
     : s;
-    }
+        }
