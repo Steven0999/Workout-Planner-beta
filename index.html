@@ -4,29 +4,23 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workout Session Logger</title>
-  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Chart.js for history chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Your stylesheet -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <!-- HEADER -->
-  <button id="to-history" class="header-btn">View My History</button>
-  <button id="to-logger" class="header-btn" style="right:auto; left:10px; display:none;">Back to Logger</button>
-
   <!-- LOGGER PAGE -->
   <div id="workout-logger" class="page active">
+    <button id="to-history" class="header-btn">View My History</button>
+
     <div class="container">
       <h1>Log New Workout Session</h1>
-      <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">Editing an existing record.</div>
 
-      <!-- Step badges (optional cosmetic) -->
-      <div id="step-badges" style="margin-bottom:10px;">
-        <span class="step-badge" data-step="1">1</span>
-        <span class="step-badge" data-step="2">2</span>
-        <span class="step-badge" data-step="3">3</span>
-        <span class="step-badge" data-step="4">4</span>
-        <span class="step-badge" data-step="5">5</span>
-        <span class="step-badge" data-step="6">6</span>
+      <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">
+        Editing an existing record.
       </div>
 
       <!-- STEP 1: Location -->
@@ -45,30 +39,41 @@
 
       <!-- STEP 2: Timing -->
       <div class="wizard-step" data-step="2" style="display:none;">
-        <h2>Are you training now, or logging a past session?</h2>
+        <h2>When is this session?</h2>
         <div class="form-group">
-          <label><input type="radio" name="timing" value="now"> Training now</label>
-          <label><input type="radio" name="timing" value="past"> I have already trained</label>
+          <label>Timing</label>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <label><input type="radio" name="timing" value="now"> Training now</label>
+            <label><input type="radio" name="timing" value="past"> Recording a past session</label>
+          </div>
         </div>
         <div class="form-group">
-          <label for="workout-datetime">Workout Date & Time</label>
+          <label for="workout-datetime">Date &amp; Time</label>
           <input type="datetime-local" id="workout-datetime">
           <div id="date-hint" class="hint"></div>
         </div>
         <div id="s2-hint" class="hint"></div>
       </div>
 
-      <!-- STEP 3: Category (+ Muscle) -->
+      <!-- STEP 3: What are you training -->
       <div class="wizard-step" data-step="3" style="display:none;">
-        <h2>What are you working on?</h2>
+        <h2>What are you training?</h2>
         <div class="form-group">
-          <label for="work-on-select">Section</label>
-          <select id="work-on-select"></select>
+          <label for="work-on-select">Category</label>
+          <select id="work-on-select">
+            <option value="">--Select--</option>
+            <!-- filled by JS from data -->
+          </select>
         </div>
-        <div class="form-group" id="muscle-select-group" style="display:none;">
+
+        <div id="muscle-select-group" class="form-group" style="display:none;">
           <label for="muscle-select">Specific Muscle</label>
-          <select id="muscle-select"></select>
+          <select id="muscle-select">
+            <option value="">--Select--</option>
+            <!-- filled by JS -->
+          </select>
         </div>
+
         <div id="s3-hint" class="hint"></div>
       </div>
 
@@ -76,55 +81,50 @@
       <div class="wizard-step" data-step="4" style="display:none;">
         <h2>Select Equipment</h2>
         <div class="form-group">
-          <select id="equipment-select"></select>
+          <label for="equipment-select">Equipment</label>
+          <select id="equipment-select">
+            <option value="">--Select--</option>
+            <!-- filled by JS -->
+          </select>
         </div>
         <div id="s4-hint" class="hint"></div>
       </div>
 
-      <!-- STEP 5: Exercise & Sets -->
+      <!-- STEP 5: Exercise + Sets -->
       <div class="wizard-step" data-step="5" style="display:none;">
-        <h2>Choose Exercise & Enter Sets</h2>
+        <h2>Pick Exercise &amp; Enter Sets</h2>
 
-        <!-- Search filter -->
         <div class="form-group">
           <label for="exercise-search">Search exercise</label>
-          <input id="exercise-search" type="text" placeholder="Type to filter exercises...">
+          <input id="exercise-search" type="text" placeholder="Type to filter exercises…">
         </div>
 
-        <!-- Exercise dropdown -->
         <div class="form-group" id="exercise-select-group">
           <label for="exercise-select">Exercise</label>
-          <select id="exercise-select"></select>
-        </div>
-
-        <!-- Dynamic insights (last / best) -->
-        <div id="exercise-insights" class="hint" style="margin-top:8px;"></div>
-
-        <!-- Movement type (bilateral / unilateral) -->
-        <div id="movement-type-wrap" class="form-group">
-          <label>Movement Type</label>
-          <select id="movement-type-select">
-            <option value="bilateral">Bilateral</option>
-            <option value="unilateral">Unilateral</option>
+          <select id="exercise-select">
+            <option value="">--Select--</option>
+            <!-- filled by JS -->
           </select>
         </div>
 
-        <!-- Sets count -->
         <div class="form-group">
           <label for="sets-input">Sets</label>
-          <input type="number" id="sets-input" min="1" value="3">
+          <input type="number" id="sets-input" value="3" min="1">
         </div>
 
-        <!-- The sets/reps/weights grids will render here -->
-        <div id="sets-grids-wrapper"></div>
+        <!-- dynamic insights + movement-type control are injected below -->
+        <div id="exercise-inputs">
+          <!-- the per-set grids are appended into this wrapper -->
+          <div id="sets-grids-wrapper"></div>
+        </div>
+
+        <div id="s5-hint" class="hint" style="margin-top:6px;"></div>
 
         <button id="add-exercise-btn">Add Exercise to Session</button>
-        <div id="s5-hint" class="hint"></div>
 
         <div id="current-workout-list-container" style="display:none;">
           <h3 style="color:orange;">Current Workout Session</h3>
           <div id="current-workout-list"></div>
-          <button id="edit-exercises-btn" type="button">Change Sets/Exercises</button>
         </div>
       </div>
 
@@ -133,11 +133,11 @@
         <h2>Review Your Session</h2>
         <div id="summary-meta" class="summary-meta"></div>
         <div id="summary-exercises"></div>
-        <div id="summary-totals" style="margin-top:10px;"></div>
+        <div id="summary-totals" style="margin-top:8px;"></div>
         <button id="save-session-btn">Save Entire Session</button>
       </div>
 
-      <div style="margin-top:15px;">
+      <div style="display:flex; justify-content:space-between; margin-top:12px;">
         <button id="prev-btn">Previous</button>
         <button id="next-btn">Next</button>
       </div>
@@ -146,12 +146,18 @@
 
   <!-- HISTORY PAGE -->
   <div id="workout-history" class="page">
+    <button id="to-logger" class="header-btn">Back to Logger</button>
+
     <div class="container">
       <h2>Workout History</h2>
+
       <div class="form-group">
         <label for="history-select">Select an Exercise</label>
-        <select id="history-select"></select>
+        <select id="history-select">
+          <option value="">--Select an Exercise--</option>
+        </select>
       </div>
+
       <div id="history-details" style="display:none;">
         <h3 id="best-weight-title">Best Weight: </h3>
         <div id="history-chart-container" class="chart-container">
@@ -163,7 +169,7 @@
     </div>
   </div>
 
-  <!-- SCRIPTS (exact order you asked for) -->
+  <!-- JS: load in this order -->
   <script src="js/utils.js"></script>
   <script src="js/data.js"></script>
   <script src="js/search.js"></script>
@@ -174,4 +180,4 @@
   <script src="js/history.js"></script>
   <script src="js/main.js"></script>
 </body>
-          </html>
+                           </html>
