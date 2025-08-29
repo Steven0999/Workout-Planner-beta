@@ -2,39 +2,35 @@
 // Central step navigator + validation + wiring to other modules (filters, sets, session, history)
 
 /* global functions expected (provided by other files):
-   - populateEquipment()            // filters.js
-   - populateExercises()            // sets.js
-   - renderSetRows()                // sets.js
-   - initSetsStep()                 // sets.js
-   - buildSessionSummary()          // session.js (or wherever you put it)
-   - updateReviewButtonState()      // main.js (or session UI)
-   - saveSession()                  // session.js
-   - populateHistoryDropdown()      // history.js
-   - displayExerciseHistory()       // history.js
+   - populateCategories(), populateMuscles(), populateEquipment() // filters.js
+   - populateExercises(), renderSetRows(), initSetsStep()         // sets.js
+   - buildSessionSummary(), saveSession(), updateReviewButtonState // session.js / main.js
+   - populateHistoryDropdown(), displayExerciseHistory()          // history.js
 */
 
 (function () {
-  // ========= Global wizard state used across modules =========
-  // (If you already define window.wizard elsewhere, this keeps/extends it.)
+  // ======= Shared wizard state (extend if exists) =======
   window.wizard = Object.assign({
-    location: "",            // "gym" | "home"
-    timing: "now",           // "now" | "past"
+    location: "",              // "gym" | "home"
+    timing: "now",             // "now" | "past"
     datetime: new Date().toISOString().slice(0, 16),
-    category: "",            // e.g., "push", "pull", "upper body", "specific muscle"
-    muscle: "",              // only when category === "specific muscle"
-    equipment: "",           // e.g., "barbell", "dumbbell"
-    exercise: "",            // picked exercise name
+    category: "",              // push/pull/upper/lower/...
+    muscle: "",                // when category === "specific muscle"
+    equipment: "",             // barbell/dumbbell/...
+    exercise: "",              // exercise name
     movementType: "bilateral", // "bilateral" | "unilateral"
     sets: 3
   }, window.wizard || {});
 
-  // ========= Local navigation state =========
+  // ======= Local navigation state =======
   window.currentStep = window.currentStep || 1;
   let lastLoggerStep = 1;
   const pageScroll = { logger: 0, history: 0 };
 
-  // ========= DOM helpers =========
+  // ======= DOM helpers =======
   const $ = (sel) => document.querySelector(sel);
+  const title = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
   const setVisibleStep = (step) => {
     document.querySelectorAll(".wizard-step").forEach((el, idx) => {
       el.style.display = (idx === step - 1) ? "block" : "none";
@@ -46,12 +42,16 @@
     if (prevBtn) prevBtn.disabled = (step === 1);
   };
 
-  // ========= Step transitions =========
+  // ======= Step navigation =======
   function goToStep(step) {
     window.currentStep = step;
     setVisibleStep(step);
 
     // Enter-step hooks
+    if (step === 3) {
+      if (typeof window.populateCategories === "function") window.populateCategories();
+      if (typeof window.populateMuscles === "function") window.populateMuscles();
+    }
     if (step === 4 && typeof window.populateEquipment === "function") {
       window.populateEquipment();
     }
@@ -81,9 +81,10 @@
       return;
     }
 
-    // Step 5: require at least one exercise added before Review
+    // Step 5 → Review only if you’ve added at least one exercise
     if (window.currentStep === 5) {
-      const hasItems = Array.isArray(window.currentWorkoutExercises) && window.currentWorkoutExercises.length > 0;
+      const hasItems = Array.isArray(window.currentWorkoutExercises) &&
+                       window.currentWorkoutExercises.length > 0;
       if (!hasItems) {
         const hint = $("#s5-hint");
         if (hint) hint.textContent = "Please add at least one exercise before reviewing your session.";
@@ -93,13 +94,13 @@
       return;
     }
 
-    // Step 6: Save
+    // Step 6 → Save
     if (typeof window.saveSession === "function") {
       window.saveSession();
     }
   }
 
-  // ========= Validation =========
+  // ======= Validation =======
   function validateAndStore(step) {
     switch (step) {
       case 1: return validateStep1();
@@ -144,7 +145,7 @@
       return true;
     }
 
-    // Past: must have a date/time
+    // Past: must pick date/time
     const dtVal = $("#workout-datetime")?.value || "";
     if (!dtVal) {
       if (hint) hint.textContent = "Pick the date/time for your past session.";
@@ -193,11 +194,10 @@
     return true;
   }
 
-  // Step 5’s detailed field validation is handled inside sets.js when adding an exercise,
-  // but we still allow Next → Review only when session has items (enforced in nextStep()).
+  // Step 5’s field checks are handled in sets.js when adding exercises
   function validateStep5() { return true; }
 
-  // ========= Normalizers / helpers =========
+  // ======= Helpers =======
   function normalizeCategory(c0) {
     const c = String(c0 || "").toLowerCase().trim();
     if (c === "upper") return "upper body";
@@ -205,7 +205,7 @@
     return c;
   }
 
-  // ========= Public navigation between Logger ↔ History (optional, if you use header buttons) =========
+  // ======= Logger ↔ History navigation (optional header buttons) =======
   function showHistoryView() {
     lastLoggerStep = window.currentStep || lastLoggerStep;
     pageScroll.logger = document.scrollingElement.scrollTop;
@@ -239,7 +239,7 @@
     }
   }
 
-  // ========= Wire up buttons on DOM ready =========
+  // ======= Wire up DOM =======
   document.addEventListener("DOMContentLoaded", () => {
     // Next / Prev
     $("#next-btn")?.addEventListener("click", nextStep);
@@ -267,12 +267,11 @@
       });
     });
 
-    // Category change → show/hide muscle group
+    // Category change → show/hide muscle + clear downstream selects
     $("#work-on-select")?.addEventListener("change", () => {
       const cat = normalizeCategory($("#work-on-select").value);
       const group = $("#muscle-select-group");
       if (group) group.style.display = (cat === "specific muscle") ? "block" : "none";
-      // reset down-stream when category changes
       const eqSel = $("#equipment-select");
       const exSel = $("#exercise-select");
       if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
@@ -303,7 +302,7 @@
     goToStep(window.currentStep || 1);
   });
 
-  // ========= Expose to global (if needed elsewhere) =========
+  // ======= Expose for other modules if needed =======
   window.goToStep = goToStep;
   window.prevStep = prevStep;
   window.nextStep = nextStep;
