@@ -1,127 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Workout Session Logger</title>
-  <!-- Chart.js for history graphs -->
+  <link rel="stylesheet" href="style.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Logger Page -->
-  <div id="workout-logger" class="page active">
-    <button id="to-history" class="header-btn">View My History</button>
+  <!-- HEADER -->
+  <button id="to-history" class="header-btn">View My History</button>
+  <button id="to-logger" class="header-btn" style="right:auto; left:10px; display:none;">Back to Logger</button>
 
+  <!-- LOGGER PAGE -->
+  <div id="workout-logger" class="page active">
     <div class="container">
       <h1>Log New Workout Session</h1>
-      <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">
-        Editing an existing record.
+      <div id="edit-mode-message" class="edit-mode-indicator" style="display:none;">Editing an existing record.</div>
+
+      <!-- Step badges (optional cosmetic) -->
+      <div id="step-badges" style="margin-bottom:10px;">
+        <span class="step-badge" data-step="1">1</span>
+        <span class="step-badge" data-step="2">2</span>
+        <span class="step-badge" data-step="3">3</span>
+        <span class="step-badge" data-step="4">4</span>
+        <span class="step-badge" data-step="5">5</span>
+        <span class="step-badge" data-step="6">6</span>
       </div>
 
-      <!-- Wizard Steps -->
-      <div class="wizard">
+      <!-- STEP 1: Location -->
+      <div class="wizard-step" data-step="1">
+        <h2>Where are you training?</h2>
+        <div class="form-group">
+          <label for="workout-type-select">Workout Location</label>
+          <select id="workout-type-select">
+            <option value="">--Select Location--</option>
+            <option value="gym">Gym</option>
+            <option value="home">Home</option>
+          </select>
+        </div>
+        <div id="s1-hint" class="hint"></div>
+      </div>
 
-        <!-- Step 1: Location -->
-        <div class="wizard-step" data-step="1">
-          <h2>Where are you training?</h2>
-          <div class="form-group">
-            <select id="workout-type-select">
-              <option value="">-- Select Location --</option>
-              <option value="gym">Gym</option>
-              <option value="home">Home</option>
-            </select>
-          </div>
-          <div id="s1-hint" class="hint"></div>
+      <!-- STEP 2: Timing -->
+      <div class="wizard-step" data-step="2" style="display:none;">
+        <h2>Are you training now, or logging a past session?</h2>
+        <div class="form-group">
+          <label><input type="radio" name="timing" value="now"> Training now</label>
+          <label><input type="radio" name="timing" value="past"> I have already trained</label>
+        </div>
+        <div class="form-group">
+          <label for="workout-datetime">Workout Date & Time</label>
+          <input type="datetime-local" id="workout-datetime">
+          <div id="date-hint" class="hint"></div>
+        </div>
+        <div id="s2-hint" class="hint"></div>
+      </div>
+
+      <!-- STEP 3: Category (+ Muscle) -->
+      <div class="wizard-step" data-step="3" style="display:none;">
+        <h2>What are you working on?</h2>
+        <div class="form-group">
+          <label for="work-on-select">Section</label>
+          <select id="work-on-select"></select>
+        </div>
+        <div class="form-group" id="muscle-select-group" style="display:none;">
+          <label for="muscle-select">Specific Muscle</label>
+          <select id="muscle-select"></select>
+        </div>
+        <div id="s3-hint" class="hint"></div>
+      </div>
+
+      <!-- STEP 4: Equipment -->
+      <div class="wizard-step" data-step="4" style="display:none;">
+        <h2>Select Equipment</h2>
+        <div class="form-group">
+          <select id="equipment-select"></select>
+        </div>
+        <div id="s4-hint" class="hint"></div>
+      </div>
+
+      <!-- STEP 5: Exercise & Sets -->
+      <div class="wizard-step" data-step="5" style="display:none;">
+        <h2>Choose Exercise & Enter Sets</h2>
+
+        <!-- Search filter -->
+        <div class="form-group">
+          <label for="exercise-search">Search exercise</label>
+          <input id="exercise-search" type="text" placeholder="Type to filter exercises...">
         </div>
 
-        <!-- Step 2: Timing -->
-        <div class="wizard-step" data-step="2" style="display:none;">
-          <h2>When are you training?</h2>
-          <div class="form-group">
-            <label><input type="radio" name="timing" value="now"> Training Now</label>
-            <label><input type="radio" name="timing" value="past"> Recording Past Session</label>
-          </div>
-          <div class="form-group">
-            <label for="workout-datetime">Date & Time</label>
-            <input type="datetime-local" id="workout-datetime">
-            <div id="date-hint" class="hint"></div>
-          </div>
-          <div id="s2-hint" class="hint"></div>
+        <!-- Exercise dropdown -->
+        <div class="form-group" id="exercise-select-group">
+          <label for="exercise-select">Exercise</label>
+          <select id="exercise-select"></select>
         </div>
 
-        <!-- Step 3: Category -->
-        <div class="wizard-step" data-step="3" style="display:none;">
-          <h2>What are you working on?</h2>
-          <div class="form-group">
-            <select id="work-on-select"></select>
-          </div>
-          <div class="form-group" id="muscle-select-group" style="display:none;">
-            <label for="muscle-select">Specific Muscle</label>
-            <select id="muscle-select"></select>
-          </div>
-          <div id="s3-hint" class="hint"></div>
+        <!-- Dynamic insights (last / best) -->
+        <div id="exercise-insights" class="hint" style="margin-top:8px;"></div>
+
+        <!-- Movement type (bilateral / unilateral) -->
+        <div id="movement-type-wrap" class="form-group">
+          <label>Movement Type</label>
+          <select id="movement-type-select">
+            <option value="bilateral">Bilateral</option>
+            <option value="unilateral">Unilateral</option>
+          </select>
         </div>
 
-        <!-- Step 4: Equipment -->
-        <div class="wizard-step" data-step="4" style="display:none;">
-          <h2>Select Equipment</h2>
-          <div class="form-group">
-            <select id="equipment-select"></select>
-          </div>
-          <div id="s4-hint" class="hint"></div>
+        <!-- Sets count -->
+        <div class="form-group">
+          <label for="sets-input">Sets</label>
+          <input type="number" id="sets-input" min="1" value="3">
         </div>
 
-        <!-- Step 5: Exercise + Sets -->
-        <div class="wizard-step" data-step="5" style="display:none;">
-          <h2>Select Exercise & Log Sets</h2>
-          
-          <div id="exercise-select-group" class="form-group">
-            <label for="exercise-select">Exercise</label>
-            <select id="exercise-select"></select>
-          </div>
-          <div class="form-group">
-            <label for="sets-input">Number of Sets</label>
-            <input type="number" id="sets-input" value="3" min="1">
-          </div>
-            <!-- The rows (reps & weights) will be injected here -->
-  <div id="exercise-inputs"></div>
+        <!-- The sets/reps/weights grids will render here -->
+        <div id="sets-grids-wrapper"></div>
 
-  <div id="s5-hint" class="hint"></div>
+        <button id="add-exercise-btn">Add Exercise to Session</button>
+        <div id="s5-hint" class="hint"></div>
 
-  <div style="margin-top:8px;">
-    <button id="add-exercise-btn" class="btn">Add Exercise to Session</button>
-  </div>
-
-  <div id="current-workout-list-container" style="display:none; margin-top:12px;">
-    <h3>Current Session</h3>
-    <div id="current-workout-list"></div>
-  </div>
-</div>
-
-        <!-- Step 6: Review & Save -->
-        <div class="wizard-step" data-step="6" style="display:none;">
-          <h2>Review Your Session</h2>
-          <div id="summary-meta"></div>
-          <div id="summary-exercises"></div>
-          <div id="summary-totals"></div>
-          <button id="edit-exercises-btn">Back & Edit Exercises</button>
-          <button id="save-session-btn">Save Session</button>
+        <div id="current-workout-list-container" style="display:none;">
+          <h3 style="color:orange;">Current Workout Session</h3>
+          <div id="current-workout-list"></div>
+          <button id="edit-exercises-btn" type="button">Change Sets/Exercises</button>
         </div>
       </div>
 
-      <!-- Wizard Nav Buttons -->
-      <div class="wizard-nav">
+      <!-- STEP 6: Review -->
+      <div class="wizard-step" data-step="6" style="display:none;">
+        <h2>Review Your Session</h2>
+        <div id="summary-meta" class="summary-meta"></div>
+        <div id="summary-exercises"></div>
+        <div id="summary-totals" style="margin-top:10px;"></div>
+        <button id="save-session-btn">Save Entire Session</button>
+      </div>
+
+      <div style="margin-top:15px;">
         <button id="prev-btn">Previous</button>
-        <button id="next-btn" data-next>Next</button>
+        <button id="next-btn">Next</button>
       </div>
     </div>
   </div>
 
-  <!-- History Page -->
+  <!-- HISTORY PAGE -->
   <div id="workout-history" class="page">
-    <button id="to-logger" class="header-btn">Back to Logger</button>
     <div class="container">
       <h2>Workout History</h2>
       <div class="form-group">
@@ -139,20 +163,15 @@
     </div>
   </div>
 
-<!-- vendor -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- your data -->
-<script src="exercises.js"></script>
-
-<!-- app scripts (order matters) -->
-<script src="js/utils.js"></script>
-<script src="js/data.js"></script>
-<script src="js/search.js"></script>
-<script src="js/filters.js"></script>
-<script src="js/sets.js"></script>
-<script src="js/wizard.js"></script>
-<script src="js/session.js"></script>
-<script src="js/history.js"></script>
-<script src="js/main.js"></script>
+  <!-- SCRIPTS (exact order you asked for) -->
+  <script src="js/utils.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/sets.js"></script>
+  <script src="js/wizard.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/main.js"></script>
 </body>
-  </html>
+          </html>
