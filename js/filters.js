@@ -1,150 +1,138 @@
-/* =======================================================================
-   filters.js
-   Populates: categories, muscles, equipment, exercises.
-   Ensures Step 5 sets grid is rendered whenever the exercise or movement
-   type changes. No resets after Add.
-   Depends on:
-     - window.EXERCISES (from exercises.js)
-     - wizard, byLocation(), normalizeCategory(), title(), uniq()
-     - renderSetRows(), showExerciseInsights()
-======================================================================= */
+// filters.js
+// Builds the "What are you working on?" (category/section) and muscle dropdowns
+// Robust to load order, casing, and weird data. Requires window.EXERCISES from exercises.js.
 
-(function() {
-  const RAW = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
-  const NORM = RAW.map(e => ({
-    name: e.name,
-    sections: (e.sections || []).map(s => String(s).toLowerCase().trim()),
-    equipment: (e.equipment || []).map(s => String(s).toLowerCase().trim()),
-    muscles: Array.isArray(e.muscles) ? e.muscles.slice() : []
+// ---- Config ----
+const CATEGORY_WHITELIST = new Set([
+  "upper body",
+  "lower body",
+  "push",
+  "pull",
+  "hinge",
+  "squat",
+  "legs",
+  "full body",
+  "core",
+  "specific muscle"
+]);
+
+const DEFAULT_CATEGORIES = [
+  "upper body",
+  "lower body",
+  "push",
+  "pull",
+  "hinge",
+  "squat",
+  "legs",
+  "full body",
+  "core",
+  "specific muscle"
+];
+
+const DEFAULT_MUSCLES = [
+  "Abs","Biceps","Calves","Chest","Forearms","Front Delts","Glute Max","Glute Med",
+  "Hamstrings","Lats","Lower Back","Mid Delts","Quads","Rear Delts","Traps","Triceps","Upper Back"
+];
+
+// ---- Utils ----
+const title = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const uniq = (a) => [...new Set(a)];
+const qs  = (sel) => document.querySelector(sel);
+
+// Normalize a single section token to lowercase, trimmed.
+function normSection(s) {
+  return String(s || "").toLowerCase().trim();
+}
+
+// Build normalized copy of EXERCISES to avoid repeated work
+function normalizeExercises(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(e => ({
+    name: String(e?.name || "").trim(),
+    sections: Array.isArray(e?.sections) ? e.sections.map(normSection) : [],
+    equipment: Array.isArray(e?.equipment) ? e.equipment.map(normSection) : [],
+    muscles: Array.isArray(e?.muscles) ? e.muscles.slice() : []
   }));
+}
 
-  const CATEGORY_WHITELIST = new Set([
-    "upper body", "lower body", "push", "pull",
-    "hinge", "squat", "full body", "core", "specific muscle"
-  ]);
+// Extract top-level categories from sections using whitelist
+function buildCategories(exNorm) {
+  const all = new Set();
+  exNorm.forEach(ex => {
+    ex.sections.forEach(sec => {
+      if (CATEGORY_WHITELIST.has(sec)) all.add(sec);
+    });
+  });
+  const out = [...all].sort((a,b)=>a.localeCompare(b));
+  return out.length ? out : DEFAULT_CATEGORIES.slice();
+}
 
-  function allCategories() {
-    const set = new Set();
-    for (const e of NORM) {
-      for (const s of e.sections) if (CATEGORY_WHITELIST.has(s)) set.add(s);
-    }
-    return [...set].sort();
+// Build muscles list (from data or fallback)
+function buildMuscles(exNorm) {
+  const mus = exNorm.flatMap(e => e.muscles || []);
+  const cleaned = uniq(mus).filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  return cleaned.length ? cleaned : DEFAULT_MUSCLES.slice().sort((a,b)=>a.localeCompare(b));
+}
+
+// Fill a <select> with options
+function fillSelect(sel, values, placeholder="--Select--") {
+  if (!sel) return;
+  const opts = [`<option value="">${placeholder}</option>`]
+    .concat(values.map(v => `<option value="${v}">${title(v)}</option>`));
+  sel.innerHTML = opts.join("");
+}
+
+// ---- Public: populate the two dropdowns ----
+function populateWorkOnDropdown() {
+  const workOnSel   = qs("#work-on-select");
+  const muscleGroup = qs("#muscle-select-group");
+  const muscleSel   = qs("#muscle-select");
+
+  if (!workOnSel || !muscleSel) {
+    console.warn("[filters] Missing #work-on-select or #muscle-select in DOM.");
+    return;
   }
-  function allMuscles() {
-    const set = new Set();
-    for (const e of NORM) (e.muscles || []).forEach(m => set.add(m));
-    return [...set].sort((a,b)=>a.localeCompare(b));
+
+  // Ensure EXERCISES is present
+  if (!Array.isArray(window.EXERCISES)) {
+    console.warn("[filters] window.EXERCISES is not available yet. Falling back to defaults.");
+    fillSelect(workOnSel, DEFAULT_CATEGORIES, "--Select--");
+    fillSelect(muscleSel, DEFAULT_MUSCLES, "--Select--");
+    if (muscleGroup) muscleGroup.style.display = "none";
+    return;
   }
-  function uniq(arr){ return [...new Set(arr)]; }
-  function title(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
-  window._EX_NORM = NORM; // debug access
+  const exNorm = normalizeExercises(window.EXERCISES);
+  const cats   = buildCategories(exNorm);
+  const muscles = buildMuscles(exNorm);
 
-  // ----- Step 3: What are you working on (category + muscle) -----
-  window.populateWorkOnDropdown = function populateWorkOnDropdown() {
-    const cats = allCategories();
-    const sel = document.getElementById("work-on-select");
-    sel.innerHTML = `<option value="">--Select--</option>` + cats.map(c => `<option value="${c}">${title(c)}</option>`).join("");
-    if (wizard.category) sel.value = wizard.category;
+  // Fill selects
+  fillSelect(workOnSel, cats, "--Select--");
+  fillSelect(muscleSel, muscles, "--Select--");
 
-    // Muscles
-    const musSel = document.getElementById("muscle-select");
-    const musGrp = document.getElementById("muscle-select-group");
-    const muscles = allMuscles();
-    musSel.innerHTML = `<option value="">--Select--</option>` + muscles.map(m => `<option value="${m}">${m}</option>`).join("");
-    if (wizard.muscle) musSel.value = wizard.muscle;
+  // Show/hide muscle group when category changes
+  workOnSel.addEventListener("change", () => {
+    const val = String(workOnSel.value || "").toLowerCase();
+    if (muscleGroup) muscleGroup.style.display = (val === "specific muscle") ? "block" : "none";
+    // Reset downstream selects when category changes
+    const eqSel = qs("#equipment-select");
+    const exSel = qs("#exercise-select");
+    if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
+    if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+  });
 
-    sel.onchange = () => {
-      const v = normalizeCategory(sel.value);
-      wizard.category = v;
-      if (v === "specific muscle") {
-        musGrp.style.display = "block";
-      } else {
-        musGrp.style.display = "none";
-        wizard.muscle = "";
-        musSel.value = "";
-      }
-      // Clear downstream
-      document.getElementById("equipment-select").innerHTML = `<option value="">--Select--</option>`;
-      document.getElementById("exercise-select").innerHTML = `<option value="">--Select--</option>`;
-    };
-    musSel.onchange = () => { wizard.muscle = musSel.value; };
-  };
+  // Initially hide muscle picker
+  if (muscleGroup) muscleGroup.style.display = "none";
+}
 
-  // ----- Step 4: Equipment -----
-  window.populateEquipment = function populateEquipment() {
-    const sel = document.getElementById("equipment-select");
-    sel.innerHTML = `<option value="">--Select--</option>`;
+// Export to window so main.js can call it
+window.populateWorkOnDropdown = populateWorkOnDropdown;
 
-    const pool = byLocation(NORM, wizard.location);
-    let filtered = pool.filter(e => e.sections.includes(wizard.category));
-    if (wizard.category === "specific muscle" && wizard.muscle) {
-      filtered = filtered.filter(e => (e.muscles || []).includes(wizard.muscle));
-    }
-
-    const eqs = uniq(filtered.flatMap(e => e.equipment)).sort((a,b)=>a.localeCompare(b));
-    sel.innerHTML += eqs.map(eq => `<option value="${eq}">${title(eq)}</option>`).join("");
-
-    if (eqs.includes(wizard.equipment)) sel.value = wizard.equipment;
-
-    sel.onchange = () => {
-      wizard.equipment = sel.value;
-      populateExercises();
-    };
-  };
-
-  // ----- Step 5: Exercises (plus movement type control) -----
-  window.populateExercises = function populateExercises() {
-    const sel = document.getElementById("exercise-select");
-    sel.innerHTML = `<option value="">--Select--</option>`;
-
-    const pool = byLocation(NORM, wizard.location);
-    let filtered = pool.filter(e => e.sections.includes(wizard.category));
-    if (wizard.category === "specific muscle" && wizard.muscle) {
-      filtered = filtered.filter(e => (e.muscles || []).includes(wizard.muscle));
-    }
-    if (wizard.equipment) {
-      filtered = filtered.filter(e => e.equipment.includes(wizard.equipment));
-    }
-
-    const names = uniq(filtered.map(e => e.name)).sort((a,b)=>a.localeCompare(b));
-    sel.innerHTML += names.map(n => `<option value="${n}">${n}</option>`).join("");
-    if (names.includes(wizard.exercise)) sel.value = wizard.exercise;
-
-    // Movement type control (bilateral/unilateral)
-    ensureMovementTypeControl();
-
-    // Insights + render grid
-    showExerciseInsights(sel.value || null);
-    renderSetRows();
-
-    sel.onchange = () => {
-      wizard.exercise = sel.value;
-      showExerciseInsights(wizard.exercise);
-      renderSetRows();
-    };
-  };
-
-  function ensureMovementTypeControl() {
-    let wrap = document.getElementById("movement-type-wrap");
-    if (!wrap) {
-      const host = document.getElementById("exercise-select").closest(".form-group");
-      wrap = document.createElement("div");
-      wrap.id = "movement-type-wrap";
-      wrap.className = "form-group";
-      wrap.innerHTML = `
-        <label>Movement Type</label>
-        <select id="movement-type-select">
-          <option value="bilateral">Bilateral</option>
-          <option value="unilateral">Unilateral</option>
-        </select>
-      `;
-      host.parentElement.insertBefore(wrap, host.nextSibling);
-      wrap.querySelector("#movement-type-select").addEventListener("change", (e) => {
-        wizard.movementType = e.target.value;
-        renderSetRows();
-      });
-    }
-    wrap.querySelector("#movement-type-select").value = wizard.movementType || "bilateral";
+// Auto-init when DOM is ready (safe to call multiple times)
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    populateWorkOnDropdown();
+  } catch (err) {
+    console.error("[filters] populateWorkOnDropdown failed:", err);
   }
-})();
+});
