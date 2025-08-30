@@ -21,10 +21,30 @@ const toFloat = (v, f = 0) => {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : f;
 };
-const nowIsoMinute = () => new Date().toISOString().slice(0, 16);
+
+/* CHANGED: return a local (not UTC) datetime string for <input type="datetime-local"> */
+const nowIsoMinute = () => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const h = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  return `${y}-${m}-${day}T${h}:${min}`;
+};
+
 const isoToLocal = iso => { try { return new Date(iso).toLocaleString(); } catch { return iso || ""; } };
 
+/* Keep your original home-safe set */
 const HOME_EQUIPMENT = new Set(["body weight", "resistance bands", "kettlebell"]);
+
+/* Alias to normalize small spelling differences in equipment strings */
+const eqAlias = (s) => {
+  const t = String(s).trim().toLowerCase();
+  if (t === "bodyweight") return "body weight"; // unify with the rest of your data
+  return t;
+};
 
 const CATEGORY_WHITELIST = new Set([
   "upper body", "lower body", "push", "pull", "hinge", "squat",
@@ -47,9 +67,9 @@ const EXES = RAW.map(e => ({
   // sections/categories (lowercased)
   sections: (Array.isArray(e.sections) ? e.sections : (Array.isArray(e.categories) ? e.categories : (e.category ? [e.category] : [])))
     .map(s => String(s).trim().toLowerCase()),
-  // equipment (lowercased array)
+  // CHANGED: normalize equipment strings (e.g., "bodyweight" -> "body weight")
   equipment: (Array.isArray(e.equipment) ? e.equipment : (e.equipment ? [e.equipment] : []))
-    .map(eq => String(eq).trim().toLowerCase()),
+    .map(eqAlias),
   muscles: Array.isArray(e.muscles) ? e.muscles.slice() : []
 }));
 
@@ -71,7 +91,7 @@ function allMusclesFromLib() {
 const W = {
   location: "",        // "gym" | "home"
   timing: "now",       // "now" | "past"
-  datetime: nowIsoMinute(),
+  datetime: nowIsoMinute(),  // CHANGED: now uses local time string
 
   section: "",         // normalized category/section
   muscle: "",          // when section === "specific muscle"
@@ -226,6 +246,7 @@ function initStep2() {
       const dtI = document.getElementById("workout-datetime");
       const hint = document.getElementById("date-hint");
       if (W.timing === "now") {
+        /* CHANGED: use local time string */
         W.datetime = nowIsoMinute();
         if (dtI) { dtI.value = W.datetime; dtI.setAttribute("disabled", "disabled"); }
         if (hint) hint.textContent = "Date/time is locked to now.";
@@ -243,6 +264,7 @@ function validateAndStoreStep2() {
     if (!dt.value) { if (hint) hint.textContent = "Choose a date/time for your past session."; return false; }
     W.datetime = dt.value;
   } else {
+    /* CHANGED: ensure "now" uses local string */
     W.datetime = nowIsoMinute();
   }
   if (hint) hint.textContent = "";
@@ -333,23 +355,23 @@ function populateEquipment() {
   // 1) Start from normalized library
   let pool = EXES.slice();
 
-  // 2) Filter by location ("home" → only home-allowed)
-  if (W.location === "home") {
-    pool = pool.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
-  }
-
-  // 3) Filter by section (+ muscle if specific)
+  // 2) Filter by section (+ muscle if specific)
   if (W.section) {
     if (W.section === "specific muscle") {
       if (W.muscle) {
         pool = pool.filter(e => e.sections.includes("specific muscle") && (e.muscles || []).includes(W.muscle));
       } else {
-        // allow all specific-muscle exercises if no particular muscle picked yet
         pool = pool.filter(e => e.sections.includes("specific muscle"));
       }
     } else {
       pool = pool.filter(e => e.sections.includes(W.section));
     }
+  }
+
+  // 3) CHANGED: apply a *soft* Home restriction (only if it still leaves results)
+  if (W.location === "home") {
+    const homePool = pool.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
+    if (homePool.length) pool = homePool;
   }
 
   // 4) Equipments from pool
@@ -359,7 +381,8 @@ function populateEquipment() {
   if (eqs.length === 0) {
     let fallback = EXES.slice();
     if (W.location === "home") {
-      fallback = fallback.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
+      const homeFallback = fallback.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
+      if (homeFallback.length) fallback = homeFallback; // soft again
     }
     eqs = [...new Set(fallback.flatMap(e => e.equipment))].sort((a,b)=>a.localeCompare(b));
   }
@@ -404,13 +427,10 @@ function populateExercises() {
   if (!exSel) return;
   exSel.innerHTML = `<option value="">--Select--</option>`;
 
-  // Build pool respecting location, section (+ muscle), and equipment
+  // Build pool respecting section (+ muscle), location, and equipment
   let pool = EXES.slice();
 
-  if (W.location === "home") {
-    pool = pool.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
-  }
-
+  // Section (+ muscle)
   if (W.section) {
     if (W.section === "specific muscle") {
       if (W.muscle) {
@@ -423,8 +443,13 @@ function populateExercises() {
     }
   }
 
+  // CHANGED: If user already picked equipment, honor that choice first.
   if (W.equipment) {
     pool = pool.filter(e => e.equipment.includes(W.equipment));
+  } else if (W.location === "home") {
+    // CHANGED: apply a *soft* Home restriction only when no equipment is locked yet
+    const homePool = pool.filter(e => e.equipment.some(eq => HOME_EQUIPMENT.has(eq)));
+    if (homePool.length) pool = homePool;
   }
 
   const names = uniq(pool.map(e => e.name)).sort((a,b)=>a.localeCompare(b));
