@@ -134,7 +134,11 @@
         <div id="summary-meta" class="summary-meta"></div>
         <div id="summary-exercises"></div>
         <div id="summary-totals" style="margin-top:8px;"></div>
-        <button id="save-session-btn">Save Entire Session</button>
+        <!-- ADDED: edit button next to save -->
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button id="edit-exercises-btn">Edit Exercises</button>
+          <button id="save-session-btn">Save Entire Session</button>
+        </div>
       </div>
 
       <div style="display:flex; justify-content:space-between; margin-top:12px;">
@@ -168,18 +172,19 @@
       </div>
     </div>
   </div>
-  
-  <!--JS: load in this order -->
-<script src="js/exercises.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/data.js"></script>
-<script src="js/search.js"></script>
-<script src="js/filters.js"></script>
-<script src="js/sets.js"></script>
-<script src="js/wizard.js"></script>
-<script src="js/session.js"></script>
-<script src="js/history.js"></script>
-<script src="js/main.js"></script>
-<script src="script.js"></script>  <!-- if this is just app glue, put it last -->
+
+  <!-- JS: load in this order -->
+  <script src="js/exercises.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/sets.js"></script>
+  <script src="js/wizard.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/main.js"></script>
+  <!-- Moved LAST so it can safely reference everything above -->
+  <script src="script.js"></script>
 </body>
-                           </html>
+          </html>
