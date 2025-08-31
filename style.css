@@ -53,7 +53,7 @@ p{ margin: 0 0 10px; }
   position: sticky;
   top: 10px;
   float: right;
-  z-index: 5;
+  z-index: 10; /* CHANGED: was 5; ensure it's under form controls below */
   padding: 10px 15px;
   font-size: 14px;
   background: var(--accent);
@@ -79,6 +79,7 @@ p{ margin: 0 0 10px; }
   background: #333;
   color: var(--text);
   outline: none;
+  font-size: 16px; /* ADDED: prevents iOS zoom-on-focus */
 }
 
 input::placeholder{ color: #ccc; opacity: .9; }
@@ -97,182 +98,3 @@ button:hover{ background: var(--hover); }
 button:active{ transform: translateY(1px); }
 button.is-disabled,
 button:disabled{
-  opacity:.55; cursor: not-allowed; filter: grayscale(0.3);
-}
-
-/* Special buttons */
-.history-actions .edit-btn{ background: var(--success); color:#fff; }
-.history-actions .delete-btn{ background: var(--danger); color:#fff; }
-#add-exercise-btn{ background:#3c3c3c; color: var(--accent); }
-#save-session-btn{ background:#2f2f2f; color: var(--accent); }
-
-/* Inline hints / indicators */
-.hint{ color: var(--muted); font-size: .95rem; }
-.edit-mode-indicator{ color: #ffeb3b; font-style: italic; margin-bottom: 10px; }
-
-/* Current workout list */
-#current-workout-list-container{ display:none; }
-#current-workout-list{
-  background: #333;
-  padding: 12px;
-  border-radius: 6px;
-  margin-top: 12px;
-  text-align: left;
-}
-.workout-item{
-  border-bottom: 1px solid var(--border);
-  padding: 8px 0 14px;
-}
-.workout-item:last-child{ border-bottom: none; }
-
-/* Wizard Stepper (optional badges if you use them) */
-.stepper{
-  display:flex; gap:8px; margin: 0 0 14px; flex-wrap: wrap;
-}
-.step-badge{
-  background: #2c2c2c;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-.step-badge.active{
-  background: var(--accent); color: #000; border-color: var(--accent);
-}
-
-/* Sets grids */
-.sets-grid{
-  display: grid;
-  grid-template-columns: 1fr auto 1fr; /* reps | prev | weight */
-  gap: 10px;
-  background: var(--panel-2);
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-.set-row{
-  display: contents; /* so inputs align to the grid columns */
-}
-.prev-weight{
-  align-self: center;
-  justify-self: center;
-  color: var(--muted);
-  font-size: .92rem;
-  white-space: nowrap;
-  padding: 4px 8px;
-  background: #262626;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
-}
-
-/* Weight inputs (legacy styles still supported) */
-#weight-inputs-container{
-  margin-top: 10px;
-  display:grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 10px;
-}
-.set-weight-input{
-  background:#555; color:#fff;
-  border:1px solid var(--border);
-  border-radius: 5px; padding:10px; width:100%;
-}
-
-/* History */
-#history-chart-container{ margin-top: 20px; }
-.chart-container{
-  position: relative;
-  height: 400px; width: 100%;
-  background: var(--panel-2);
-  border-radius: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-}
-
-#history-log{ list-style:none; margin:0; padding:0; }
-#history-log li{
-  display:flex; justify-content: space-between; align-items: center;
-  background: #333;
-  margin: 10px 0; padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  gap: 10px;
-}
-.history-actions button{
-  padding: 6px 10px; font-size: 14px; margin-left: 6px; border-radius: 8px;
-}
-
-/* Review / Summary */
-.summary{
-  display: grid;
-  gap: 14px;
-}
-.summary-row{
-  display:flex; justify-content: space-between; gap: 8px;
-  padding: 8px 12px; background: #2a2a2a;
-  border: 1px solid var(--border); border-radius: 8px;
-}
-.summary-exercise{
-  background: #2a2a2a; border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px; line-height: 1.5;
-  box-shadow: var(--shadow);
-}
-.summary-exercise strong{ color: var(--accent); }
-#summary-totals{
-  display:grid; gap:8px; margin-top: 8px;
-  background: #262626; border:1px solid var(--border);
-  border-radius: 8px; padding: 10px 12px;
-}
-
-/* Selects visibility control for specific muscle */
-#muscle-select-group{ display:none; }
-
-/* Inputs focus */
-select:focus,
-input:focus{ outline: 2px solid rgba(255,165,0,.35); }
-
-/* Tables (if any are added later) */
-table{ width:100%; border-collapse: collapse; }
-td, th{ padding: 8px; border-bottom: 1px solid var(--border); }
-th{ color: var(--accent-2); text-align: left; }
-
-/* Scroll behavior for sticky header button spacing */
-@supports (position: sticky){
-  body{ padding-top: 4px; }
-}
-
-/* Toast-like alerts (browser alert is used, but style here if swapped) */
-.toast{
-  position: fixed; right: 16px; bottom: 16px; z-index: 50;
-  background: #2b2b2b; border: 1px solid var(--border);
-  color: var(--text); border-radius: 10px; padding: 10px 14px;
-  box-shadow: var(--shadow);
-}
-
-/* Responsive */
-@media (max-width: 900px){
-  .container{ margin: 12px; padding: 16px; }
-}
-@media (max-width: 720px){
-  button{ font-size: 15px; padding: 11px 18px; }
-  .summary-row{ padding: 8px 10px; }
-}
-@media (max-width: 560px){
-  /* Stack the sets grid to fit narrow screens: reps, prev, weight on separate lines */
-  .sets-grid{
-    grid-template-columns: 1fr;
-  }
-  .prev-weight{ justify-self: start; margin: -4px 0 4px; }
-  .header-btn{ position: fixed; right: 10px; top: 10px; }
-  #history-log li{ flex-direction: column; align-items: flex-start; }
-}
-@media (hover: none){
-  button:hover{ background: grey; } /* neutralize hover on touch devices */
-}
-
-/* Utility */
-.mt-0{ margin-top: 0 !important; }
-.mb-0{ margin-bottom: 0 !important; }
-.center{ text-align: center; }
-.right{ text-align: right; }
