@@ -1,9 +1,18 @@
+
+
 // js/filters.js
 // Populates: categories (Step 3), muscles (Step 3), equipment (Step 4)
 // Depends on: window.EXERCISES (from exercises.js)
 
 (function () {
   const $ = (s) => document.querySelector(s);
+
+  // ---- Bridge wizard state so window.wizard and App.wizard always point to the same object
+  const App = (window.App = window.App || {});
+  App.wizard = App.wizard || {};
+  window.wizard = window.wizard || App.wizard;   // prefer existing if present
+  App.wizard = window.wizard;                    // keep both refs in sync
+  const wizard = window.wizard;
 
   // Canonical top-level categories shown to the user
   const TOP_CATEGORIES = [
@@ -21,6 +30,15 @@
   const title = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const unique = (arr) => [...new Set(arr)];
 
+  // --- Equipment aliasing to avoid mismatches ("bodyweight" vs "body weight", band variants, etc.)
+  function eqAlias(s) {
+    const t = String(s || "").trim().toLowerCase();
+    if (t === "bodyweight") return "body weight";
+    if (t === "band" || t === "bands" || t === "resistance band" || t === "resistance-band")
+      return "resistance bands";
+    return t;
+  }
+
   // ---------- Muscles ----------
   function allMusclesFromData() {
     const src = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
@@ -37,7 +55,7 @@
     if (!isSpecific) {
       const musSel = /** @type {HTMLSelectElement} */ ($("#muscle-select"));
       if (musSel) musSel.value = "";
-      if (window.wizard) window.wizard.muscle = "";
+      wizard.muscle = "";
     }
   }
 
@@ -62,8 +80,8 @@
       TOP_CATEGORIES.map((c) => `<option value="${c}">${title(c)}</option>`).join("");
 
     // Restore previously chosen value if still valid
-    if (window.wizard?.category && TOP_CATEGORIES.includes(window.wizard.category)) {
-      sel.value = window.wizard.category;
+    if (wizard.category && TOP_CATEGORIES.includes(wizard.category)) {
+      sel.value = wizard.category;
     } else {
       sel.value = "";
     }
@@ -75,15 +93,17 @@
     sel.addEventListener("change", () => {
       const val = sel.value;
       toggleMuscleVisibility(val);
-      if (window.wizard) {
-        window.wizard.category = normalizeCategory(val);
-        if (window.wizard.category !== "specific muscle") window.wizard.muscle = "";
-      }
+      wizard.category = normalizeCategory(val);
+      if (wizard.category !== "specific muscle") wizard.muscle = "";
+
       // Clear downstream selects
       const eqSel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
       const exSel = /** @type {HTMLSelectElement} */ ($("#exercise-select"));
       if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
       if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+
+      // Actively repopulate equipment now (quality-of-life)
+      populateEquipment();
     });
   }
 
@@ -96,8 +116,8 @@
       `<option value="">--Select--</option>` +
       muscles.map((m) => `<option value="${m}">${m}</option>`).join("");
 
-    if (window.wizard?.muscle && muscles.includes(window.wizard.muscle)) {
-      musclesSel.value = window.wizard.muscle;
+    if (wizard.muscle && muscles.includes(wizard.muscle)) {
+      musclesSel.value = wizard.muscle;
     } else {
       musclesSel.value = "";
     }
@@ -105,12 +125,16 @@
 
     // Keep wizard in sync if user changes muscle
     musclesSel.addEventListener("change", () => {
-      if (window.wizard) window.wizard.muscle = musclesSel.value || "";
+      wizard.muscle = musclesSel.value || "";
+
       // changing muscle invalidates downstream choices
       const eqSel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
       const exSel = /** @type {HTMLSelectElement} */ ($("#exercise-select"));
       if (eqSel) eqSel.innerHTML = `<option value="">--Select--</option>`;
       if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
+
+      // Repopulate equipment immediately if we're already on Step 4
+      populateEquipment();
     });
   }
 
@@ -123,7 +147,7 @@
       const HOME = new Set(["body weight", "resistance bands", "kettlebell"]);
       return items.filter((e) =>
         Array.isArray(e.equipment) &&
-        e.equipment.map(x => String(x).toLowerCase()).some((eq) => HOME.has(eq))
+        e.equipment.map(eqAlias).some((eq) => HOME.has(eq))
       );
     }
     // gym → everything
@@ -132,13 +156,13 @@
 
   // ---------- Equipment (Step 4) ----------
   function populateEquipment() {
-    const sel = /** @type {HTMLSelectElement} */ (document.querySelector("#equipment-select"));
+    const sel = /** @type {HTMLSelectElement} */ ($("#equipment-select"));
     if (!sel) return;
 
     const exData   = Array.isArray(window.EXERCISES) ? window.EXERCISES : [];
-    const location = (window.wizard?.location || "").toLowerCase();
-    const category = (window.wizard?.category || "").toLowerCase();
-    const muscle   = window.wizard?.muscle || "";
+    const location = String(wizard.location || "").toLowerCase();
+    const category = String(wizard.category || "").toLowerCase();
+    const muscle   = wizard.muscle || "";
 
     // 1) Start from location-filtered pool (but if no location, keep all)
     let pool = byLocation(exData, location);
@@ -148,7 +172,7 @@
       pool = pool.filter((e) =>
         Array.isArray(e.sections) &&
         e.sections.map(s => String(s).toLowerCase()).includes("specific muscle") &&
-        Array.isArray(e.muscles) && e.muscles.includes(muscle)
+        Array.isArray(e.muscles) && e.muscles.includes(muscle) // muscles are display-cased; keep exact match
       );
     } else if (category) {
       pool = pool.filter((e) =>
@@ -157,10 +181,10 @@
       );
     }
 
-    // 3) Collect unique equipments
+    // 3) Collect unique equipments (with aliasing)
     let equipments = [...new Set(
       pool.flatMap((e) =>
-        Array.isArray(e.equipment) ? e.equipment.map(x => String(x).toLowerCase()) : []
+        Array.isArray(e.equipment) ? e.equipment.map(eqAlias) : []
       )
     )].sort((a, b) => a.localeCompare(b));
 
@@ -179,8 +203,8 @@
       equipments.map((eq) => `<option value="${eq}">${title(eq)}</option>`).join("");
 
     // Restore previously chosen equipment if still valid
-    if (window.wizard?.equipment && equipments.includes(window.wizard.equipment)) {
-      sel.value = window.wizard.equipment;
+    if (wizard.equipment && equipments.includes(eqAlias(wizard.equipment))) {
+      sel.value = eqAlias(wizard.equipment);
     } else {
       sel.value = "";
     }
@@ -190,7 +214,7 @@
     sel.style.pointerEvents = "auto";
 
     // Clear exercise list (Step 5 will repopulate)
-    const exSel = /** @type {HTMLSelectElement} */ (document.querySelector("#exercise-select"));
+    const exSel = /** @type {HTMLSelectElement} */ ($("#exercise-select"));
     if (exSel) exSel.innerHTML = `<option value="">--Select--</option>`;
 
     // Small debug to help verify state
