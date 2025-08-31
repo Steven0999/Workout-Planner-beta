@@ -39,7 +39,7 @@ const isoToLocal = iso => { try { return new Date(iso).toLocaleString(); } catch
 /* Keep your original home-safe set */
 const HOME_EQUIPMENT = new Set(["body weight", "resistance bands", "kettlebell"]);
 
-/* Alias to normalize small spelling differences in equipment strings */
+/* CHANGED: normalize small spelling differences in equipment strings */
 const eqAlias = (s) => {
   const t = String(s).trim().toLowerCase();
   if (t === "bodyweight") return "body weight"; // unify with the rest of your data
